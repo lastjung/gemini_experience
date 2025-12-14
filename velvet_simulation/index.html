@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Velvet Cloth Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a0505;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff4d4d;
+            font-family: 'Helvetica', sans-serif;
+            pointer-events: none;
+            text-align: center;
+            opacity: 0.8;
+            font-weight: lighter;
+            z-index: 10;
+        }
+
+        #instructions input,
+        #instructions button,
+        #instructions label {
+            pointer-events: auto;
+            /* Enable interaction */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="instructions">
+        <h2>Velvet Cloth</h2>
+        <p>Drag to Tear • Right Click to Cut</p>
+        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; align-items: center;">
+            <label style="font-size: 12px;">Hue:</label>
+            <input type="range" id="hueSlider" min="0" max="360" value="0" style="cursor: pointer;">
+            <button id="resetBtn"
+                style="background:none; border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 10px; cursor: pointer; font-family: inherit;">Reset</button>
+        </div>
+        <input type="color" id="colorPicker" value="#8a1c1c" style="display:none;">
+        <!-- Hidden, using Hue slider instead for 'slider' request -->
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const hueSlider = document.getElementById('hueSlider');
+        const resetBtn = document.getElementById('resetBtn');
+
+        let width, height;
+        let clothColor = 'hsl(0, 80%, 33%)'; // Initial Dark Red
+
+        hueSlider.addEventListener('input', (e) => {
+            // Keep saturation and lightness fixed for velvet look, just change Hue
+            clothColor = `hsl(${e.target.value}, 80%, 33%)`;
+            // Also update background tint slightly? No, keep it dark.
+        });
+
+        resetBtn.addEventListener('click', () => {
+            init();
+        });
+
+        // Configuration
+        const physicsAccuracy = 5;
+        const mouseInfluence = 50;
+        const tearDistance = 60;
+        const gravity = 1200;
+        const clothY = 180; // Lowered further to avoid UI overlap
+        const spacing = 12;
+        const widthPoints = 60;
+        const heightPoints = 35;
+        const windStrength = 15;
+
+        // State
+        const points = [];
+        const constraints = [];
+        let mouse = { x: 0, y: 0, down: false, button: 0, draggedPoint: null };
+
+        // --- Vector Helper ---
+        class Point {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.oldx = x;
+                this.oldy = y;
+                this.pinned = false;
+            }
+
+            update(delta) {
+                if (this.pinned) return;
+
+                // If being dragged, lock to mouse (but allow tearing via constraints later)
+                if (mouse.draggedPoint === this) {
+                    this.oldx = this.x; // Track velocity
+                    this.oldy = this.y;
+                    this.x = mouse.x;
+                    this.y = mouse.y;
+                    return;
+                }
+
+                const vx = (this.x - this.oldx) * 0.99;
+                const vy = (this.y - this.oldy) * 0.99;
+
+                this.oldx = this.x;
+                this.oldy = this.y;
+
+                this.x += vx;
+                this.y += vy;
+                this.y += gravity * delta * delta;
+
+                const wind = Math.sin(Date.now() / 500 + this.y * 0.05) * windStrength +
+                    Math.cos(Date.now() / 1200) * (windStrength * 0.5);
+
+                this.x += wind * delta * delta;
+
+                if (this.y > height) {
+                    this.y = height;
+                    this.oldy = this.y + vy * 0.5;
+                }
+            }
+
+            draw() {
+                // Not drawing points, only constraints
+            }
+        }
+
+        class Constraint {
+            constructor(p1, p2) {
+                this.p1 = p1;
+                this.p2 = p2;
+                this.length = spacing;
+            }
+
+            resolve() {
+                if (!this.p1 || !this.p2) return;
+
+                const dx = this.p1.x - this.p2.x;
+                const dy = this.p1.y - this.p2.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > tearDistance) {
+                    this.p1 = null;
+                    return;
+                }
+
+                if (dist > this.length) {
+                    const diff = (this.length - dist) / dist;
+                    const offsetX = dx * diff * 0.5;
+                    const offsetY = dy * diff * 0.5;
+
+                    if (!this.p1.pinned && mouse.draggedPoint !== this.p1) {
+                        this.p1.x += offsetX;
+                        this.p1.y += offsetY;
+                    }
+                    if (!this.p2.pinned && mouse.draggedPoint !== this.p2) {
+                        this.p2.x -= offsetX;
+                        this.p2.y -= offsetY;
+                    }
+                }
+            }
+
+            draw() {
+                if (!this.p1 || !this.p2) return;
+                ctx.moveTo(this.p1.x, this.p1.y);
+                ctx.lineTo(this.p2.x, this.p2.y);
+            }
+        }
+
+        // --- Init ---
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            points.length = 0;
+            constraints.length = 0;
+
+            const startX = (width - widthPoints * spacing) / 2;
+
+            // Create Points
+            for (let y = 0; y < heightPoints; y++) {
+                for (let x = 0; x < widthPoints; x++) {
+                    const p = new Point(startX + x * spacing, clothY + y * spacing);
+                    // Pin the top row
+                    if (y === 0 && x % 1 === 0) { // Pin every point on top row
+                        p.pinned = true;
+                    }
+                    points.push(p);
+                }
+            }
+
+            // Create Constraints (Grid)
+            for (let y = 0; y < heightPoints; y++) {
+                for (let x = 0; x < widthPoints; x++) {
+                    if (x < widthPoints - 1) {
+                        constraints.push(new Constraint(points[y * widthPoints + x], points[y * widthPoints + x + 1]));
+                    }
+                    if (y < heightPoints - 1) {
+                        constraints.push(new Constraint(points[y * widthPoints + x], points[(y + 1) * widthPoints + x]));
+                    }
+                }
+            }
+        }
+
+        // --- Interaction Logic ---
+        function handleStart(x, y, button) {
+            mouse.down = true;
+            mouse.x = x;
+            mouse.y = y;
+            mouse.button = button;
+
+            if (button === 2) return; // Right click is for cutting, handled in updates
+
+            // Find nearest point to grab
+            let nearest = null;
+            let minDist = mouseInfluence;
+
+            for (let p of points) {
+                const dx = x - p.x;
+                const dy = y - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = p;
+                }
+            }
+
+            mouse.draggedPoint = nearest;
+        }
+
+        function handleMove(x, y) {
+            mouse.x = x;
+            mouse.y = y;
+        }
+
+        function handleEnd() {
+            mouse.down = false;
+            mouse.draggedPoint = null;
+        }
+
+        function updateInteraction() {
+            // Cut logic (Right Click)
+            if (mouse.down && mouse.button === 2) {
+                for (let c of constraints) {
+                    if (!c.p1) continue;
+                    const midX = (c.p1.x + c.p2.x) / 2;
+                    const midY = (c.p1.y + c.p2.y) / 2;
+                    const dx = mouse.x - midX;
+                    const dy = mouse.y - midY;
+                    if (dx * dx + dy * dy < 200) c.p1 = null;
+                }
+            }
+        }
+
+        // --- Loop ---
+        function update(delta) {
+            // Physics Points
+            for (let i = 0; i < points.length; i++) {
+                points[i].update(delta);
+            }
+
+            // Constraints Relax (Iterate multiples for stiffness)
+            for (let i = 0; i < physicsAccuracy; i++) {
+                for (let c = 0; c < constraints.length; c++) {
+                    if (constraints[c].p1) constraints[c].resolve();
+                }
+            }
+            updateInteraction();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            ctx.beginPath();
+            ctx.strokeStyle = clothColor;
+            ctx.lineWidth = 1;
+
+            // Batch drawing
+            for (let i = 0; i < constraints.length; i++) {
+                constraints[i].draw();
+            }
+            ctx.stroke();
+
+            // Draw points (optional, for velvet texture look maybe?)
+            // A subtle glow?
+
+            // Draw Interaction Cursor
+            if (mouse.down) {
+                ctx.beginPath();
+                ctx.arc(mouse.x, mouse.y, mouseInfluence, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.stroke();
+            }
+        }
+
+        let lastTime = Date.now();
+        function loop() {
+            const now = Date.now();
+            const delta = (now - lastTime) / 1000; // Seconds
+            lastTime = now;
+
+            // Cap delta to prevent explosion on lag
+            update(Math.min(delta, 0.02));
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // --- Events ---
+        window.addEventListener('resize', init);
+
+        // Mouse Events
+        canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY, e.button));
+        canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        // Touch Events (for Pads/Tablets/Mobiles)
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            handleStart(e.touches[0].clientX, e.touches[0].clientY, 0);
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', handleEnd);
+
+        init();
+        loop();
+
+    </script>
+</body>
+
+</html>

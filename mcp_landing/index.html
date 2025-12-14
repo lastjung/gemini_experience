@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Context Protocol (MCP) - AI 연결의 미래</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;700&display=swap');
+
+        :root {
+            --primary-bg: #0f172a;
+            --secondary-bg: #1e293b;
+            --accent-color: #38bdf8;
+            --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+            --text-main: #f8fafc;
+            --text-secondary: #94a3b8;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: var(--primary-bg);
+            color: var(--text-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Background Effects */
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: 
+                radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(129, 140, 248, 0.08), transparent 25%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Typography */
+        h1, h2, h3 {
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .gradient-text {
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        section {
+            padding: 5rem 0;
+        }
+
+        /* Header / Hero */
+        header {
+            min-height: 90vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero-content {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeUp 1s ease forwards;
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .hero-subtitle {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            background: var(--accent-gradient);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.4);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(56, 189, 248, 0.5);
+        }
+
+        /* Cards & Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            padding: 2.5rem;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(56, 189, 248, 0.5);
+        }
+
+        .card-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 12px;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+        }
+
+        /* Diagram Section */
+        .diagram-container {
+            margin: 4rem 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .connection-line {
+            height: 2px;
+            background: var(--accent-gradient);
+            flex-grow: 1;
+            max-width: 100px;
+            position: relative;
+        }
+
+        .connection-line::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 10px;
+            height: 10px;
+            background: #fff;
+            border-radius: 50%;
+            transform: translateY(-50%);
+            animation: moveDot 2s infinite linear;
+        }
+
+        @keyframes moveDot {
+            0% { left: 0; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
+
+        .node {
+            background: var(--secondary-bg);
+            border: 1px solid var(--accent-color);
+            padding: 1.5rem 2.5rem;
+            border-radius: 12px;
+            font-weight: 700;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+            z-index: 10;
+        }
+
+        .node-label {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            font-weight: 400;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--card-border);
+            padding: 3rem 0;
+            text-align: center;
+            color: var(--text-secondary);
+            margin-top: 5rem;
+        }
+
+        /* Utilities */
+        .fade-in-section {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+            will-change: opacity, visibility;
+        }
+
+        .fade-in-section.is-visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            .diagram-container {
+                flex-direction: column;
+                gap: 2rem;
+            }
+            .connection-line {
+                width: 2px;
+                height: 50px;
+                max-width: 2px;
+            }
+            .connection-line::after {
+                top: 0;
+                left: 50%;
+                transform: translateX(-50%);
+                animation: moveDotVertical 2s infinite linear;
+            }
+            @keyframes moveDotVertical {
+                0% { top: 0; opacity: 0; }
+                10% { opacity: 1; }
+                90% { opacity: 1; }
+                100% { top: 100%; opacity: 0; }
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+
+    <header>
+        <div class="container hero-content">
+            <h1 class="hero-title">
+                AI와 데이터의<br>
+                <span class="gradient-text">완벽한 연결</span>
+            </h1>
+            <p class="hero-subtitle">
+                Model Context Protocol(MCP)은 AI 모델이 외부 데이터 및 도구와 안전하게 상호작용하도록 돕는 새로운 개방형 표준입니다.
+            </p>
+            <a href="#about" class="cta-button">MCP 알아보기</a>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- About Section -->
+        <section id="about" class="fade-in-section">
+            <h2><span class="gradient-text">MCP란 무엇인가요?</span></h2>
+            <p style="margin-top: 1rem; font-size: 1.2rem; color: var(--text-secondary); max-width: 800px;">
+                MCP는 AI 애플리케이션(Client)과 데이터 소스(Server)를 연결하는 범용 프로토콜입니다. 마치 컴퓨터에 주변기기를 연결하는 USB 포트처럼, AI 모델이 세상의 다양한 데이터와 도구에 손쉽게 접근할 수 있도록 표준화된 방식을 제공합니다.
+            </p>
+        </section>
+
+        <!-- Working Principle Section -->
+        <section id="how-it-works" class="fade-in-section">
+            <h2 style="text-align: center; margin-bottom: 3rem;">작동 원리 (Architecture)</h2>
+            <div class="diagram-container">
+                <div class="node">
+                    <span class="node-label">Application</span>
+                    Host (Client)
+                </div>
+                <div class="connection-line"></div>
+                <div class="node">
+                    <span class="node-label">Protocol</span>
+                    JSON-RPC
+                </div>
+                <div class="connection-line"></div>
+                <div class="node">
+                    <span class="node-label">Data Source</span>
+                    MCP Server
+                </div>
+            </div>
+            <p style="text-align: center; color: var(--text-secondary);">
+                호스트 어플리케이션은 MCP 클라이언트를 통해 서버와 통신하며, <br>
+                서버는 리소스, 프롬프트, 도구를 제공하여 모델의 능력을 확장합니다.
+            </p>
+        </section>
+
+        <!-- Components Section -->
+        <section id="components" class="fade-in-section">
+            <h2>핵심 구성 요소</h2>
+            <div class="grid">
+                <div class="card">
+                    <div class="card-icon">📂</div>
+                    <h3>Resources</h3>
+                    <p>AI 모델이 읽을 수 있는 데이터입니다. 파일, 데이터베이스 레코드, 또는 API 응답과 같은 정보를 텍스트나 이진 데이터 형태로 제공합니다.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📝</div>
+                    <h3>Prompts</h3>
+                    <p>사용자가 특정 작업을 수행할 수 있도록 미리 정의된 템플릿입니다. 효율적인 상호작용을 위해 최적화된 지침을 제공합니다.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔧</div>
+                    <h3>Tools</h3>
+                    <p>모델이 실행할 수 있는 함수입니다. 외부 API 호출, 데이터 처리, 시스템 제어 등 실질적인 작업을 수행할 수 있는 능력을 부여합니다.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Benefits Section -->
+        <section id="benefits" class="fade-in-section">
+            <h2>왜 MCP인가요?</h2>
+            <div class="grid">
+                <div class="card" style="border-color: rgba(129, 140, 248, 0.3);">
+                    <h3>🔗 표준화된 연결</h3>
+                    <p>개별적인 연동 작업 없이, MCP 표준을 따르는 모든 데이터 소스와 AI 모델을 손쉽게 연결할 수 있습니다.</p>
+                </div>
+                <div class="card" style="border-color: rgba(56, 189, 248, 0.3);">
+                    <h3>🧠 컨텍스트 강화</h3>
+                    <p>최신 정보와 실제 데이터에 기반한 답변을 제공함으로써, AI의 환각(Hallucination) 현상을 줄이고 신뢰성을 높입니다.</p>
+                </div>
+                <div class="card" style="border-color: rgba(232, 121, 249, 0.3);">
+                    <h3>🚀 생태계 확장</h3>
+                    <p>개발자는 한 번의 서버 구축으로 다양한 AI 애플리케이션에 자신의 데이터를 제공할 수 있습니다.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>© 2025 Model Context Protocol Explanation. Created based on Anthropic's Open Standard.</p>
+    </footer>
+
+    <script>
+        // Intersection Observer for fade-in animations
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in-section').forEach(section => {
+            observer.observe(section);
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>

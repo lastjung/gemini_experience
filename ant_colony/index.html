@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ant Colony Optimization</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            color: #fff;
+            font-family: sans-serif;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            pointer-events: none;
+            user-select: none;
+            backdrop-filter: blur(5px);
+            border: 1px solid #333;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.2rem;
+            color: #4deeea;
+        }
+
+        p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+
+        .legend {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 5px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 8px 0;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: auto;
+            font-size: 0.8rem;
+            text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        /* distinct colors */
+        .controls button:nth-child(1) {
+            background: #2ecc71;
+        }
+
+        /* Green */
+        .controls button:nth-child(2) {
+            background: #f1c40f;
+            color: #000;
+            text-shadow: none;
+        }
+
+        /* Yellow */
+        .controls button:nth-child(3) {
+            background: #e74c3c;
+        }
+
+        /* Red */
+        .controls button:hover {
+            opacity: 0.8;
+        }
+
+        .full-width {
+            grid-column: span 3;
+            margin-top: 5px;
+            background: #3498db !important;
+            /* Blue */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="instructions">
+        <h1>Ant Colony</h1>
+        <p>Swarm Intelligence Visualization</p>
+        <div class="legend"><span class="dot" style="background:#0f0"></span> Food Source (Drag)</div>
+        <div class="legend"><span class="dot" style="background:#00f"></span> Colony Home</div>
+        <div class="legend"><span class="dot" style="background:rgba(255,50,50,1)"></span> Pheromones</div>
+
+        <div class="controls">
+            <button onclick="resetSim(1)">1 Food</button>
+            <button onclick="resetSim(2)">2 Foods</button>
+            <button onclick="resetSim(3)">3 Foods</button>
+            <button class="full-width" onclick="resetSim()">Reset Current</button>
+        </div>
+    </div>
+    <canvas id="simCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+
+        let width, height;
+        const config = {
+            antCount: 1200,
+            sensorAngle: Math.PI / 3,
+            sensorDist: 30,
+            turnSpeed: 0.5,
+            moveSpeed: 2,
+            evaporationRate: 0.99, // Very slow decay
+            pheromoneStrength: 255, // Max strength instantly
+            foodPheromoneColor: [255, 0, 100], // Magenta/Reddish for food trail
+            homePheromoneColor: [0, 100, 255]  // Blueish for home trail (optional)
+        };
+
+        // State
+        // State
+        // State
+        let ants = [];
+        let pheromones = null;
+        let traceData = null; // Image Data
+        const INITIAL_FOOD = 5000;
+        let foods = [];
+        let foodCount = 2; // Default 2 foods
+        let home = { x: 0, y: 0, radius: 25 };
+
+        // Setup
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            // Re-init grid
+            pheromones = new Float32Array(width * height);
+            traceData = ctx.createImageData(width, height);
+
+            // Center Home
+            home.x = width * 0.5;
+            home.y = height * 0.5;
+
+            // Re-spawn or adjust food if needed
+            if (foods.length === 0) resetSim(foodCount);
+        }
+        window.addEventListener('resize', resize);
+        resize(); // Call immediately to set width/height and init arrays
+
+        function resetSim(newCount) {
+            if (newCount !== undefined) foodCount = newCount;
+
+            pheromones.fill(0);
+            ants.forEach(ant => ant.reset());
+
+            foods = [];
+            const colors = ['#f1c40f', '#2ecc71', '#9b59b6']; // Yellow, Green, Purple
+
+            for (let i = 0; i < foodCount; i++) {
+                // Random position with padding
+                const padding = 100;
+                foods.push({
+                    x: Math.random() * (width - padding * 2) + padding,
+                    y: Math.random() * (height - padding * 2) + padding,
+                    radius: Math.sqrt(INITIAL_FOOD) * 0.5,
+                    amount: INITIAL_FOOD,
+                    color: colors[i % colors.length]
+                });
+            }
+        }
+
+        class Ant {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = home.x;
+                this.y = home.y;
+                this.angle = Math.random() * Math.PI * 2;
+                this.hasFood = false;
+            }
+
+            update() {
+                // simple sensor logic
+                // If hasFood, look for Home (or Home Pheromones)
+                // If !hasFood, look for Food (or Food Pheromones)
+
+                // For simplicity + visual effect:
+                // 1. Ants leaving home leave "Home" pheromones? (Not implemented here for performace, let's stick to Food Pheromone)
+                // Actually, standard ACO uses two pheromones "To Food" and "To Home".
+                // Let's implement single pheromone: "Food Trail".
+                // Ants look for Pheromone when !hasFood.
+                // Ants look for Home when hasFood.
+
+                if (this.hasFood) {
+                    // RETURN HOME
+                    // Homing Beacon logic with Noise
+                    const dx = home.x - this.x;
+                    const dy = home.y - this.y;
+                    const targetAngle = Math.atan2(dy, dx);
+
+                    // Add noise to target angle so they don't walk in a perfect laser line
+                    // The "Wiggle"
+                    const noise = (Math.random() - 0.5) * 1.0;
+
+                    let da = (targetAngle + noise) - this.angle;
+                    while (da > Math.PI) da -= Math.PI * 2;
+                    while (da < -Math.PI) da += Math.PI * 2;
+
+                    // Steer gently
+                    this.angle += da * 0.1;
+
+                    // Deposit Pheromone (Making the path back visible for others)
+                    // Note: In real life, they leave 'Food' pheromone on the way back.
+                    // Here we drop it so searching ants find *this* trail.
+                    const ix = Math.floor(this.x);
+                    const iy = Math.floor(this.y);
+                    if (ix >= 0 && ix < width && iy >= 0 && iy < height) {
+                        pheromones[iy * width + ix] = Math.min(255, pheromones[iy * width + ix] + config.pheromoneStrength);
+                    }
+
+                    // Check if home
+                    const distStruct = Math.sqrt(dx * dx + dy * dy);
+                    if (distStruct < home.radius) {
+                        this.hasFood = false;
+                        this.angle += Math.PI + (Math.random() - 0.5); // Turn around randomly
+                    }
+
+                } else {
+                    // SEARCH FOR FOOD
+                    // Check Collision with ANY food
+                    for (let f of foods) {
+                        if (f.amount > 0) {
+                            const dx = f.x - this.x;
+                            const dy = f.y - this.y;
+                            if (Math.sqrt(dx * dx + dy * dy) < f.radius) {
+                                this.hasFood = true;
+                                this.angle += Math.PI;
+
+                                // Eat 
+                                f.amount -= 10;
+                                if (f.amount <= 0) {
+                                    f.amount = 0;
+                                    f.radius = 0;
+                                    // Respawn immediately? Or wait? 
+                                    // Prompt asked for random spawn when gone. 
+                                    // Let's respawn this specific food node elsewhere immediately
+                                    f.x = Math.random() * (width - 100) + 50;
+                                    f.y = Math.random() * (height - 100) + 50;
+                                    f.amount = INITIAL_FOOD;
+                                    f.radius = Math.sqrt(INITIAL_FOOD) * 0.5;
+                                } else {
+                                    f.radius = Math.sqrt(f.amount) * 0.5;
+                                }
+                                return;
+                            }
+                        }
+                    }
+
+                    // 2. Sense Pheromones
+                    const left = this.sense(this.angle - config.sensorAngle);
+                    const center = this.sense(this.angle);
+                    const right = this.sense(this.angle + config.sensorAngle);
+
+                    // Random wander base
+                    const wander = (Math.random() - 0.5) * 0.2;
+
+                    if (center > left && center > right) {
+                        // On track - follow Strongest
+                        this.angle += wander * 0.5; // Slight jitter
+                    } else if (center < left && center < right) {
+                        // Confused - turn randomly
+                        this.angle += (Math.random() - 0.5) * 2 * config.turnSpeed;
+                    } else if (left > right) {
+                        this.angle -= config.turnSpeed; // Turn Left towards trail
+                    } else if (right > left) {
+                        this.angle += config.turnSpeed; // Turn Right towards trail
+                    } else {
+                        // No scent, roam freely
+                        this.angle += wander;
+                    }
+                }
+
+                // Move
+                this.x += Math.cos(this.angle) * config.moveSpeed;
+                this.y += Math.sin(this.angle) * config.moveSpeed;
+
+                // Bounce walls
+                if (this.x < 0 || this.x >= width) {
+                    this.angle = Math.PI - this.angle;
+                    this.x = Math.max(0, Math.min(width - 1, this.x));
+                }
+                if (this.y < 0 || this.y >= height) {
+                    this.angle = -this.angle;
+                    this.y = Math.max(0, Math.min(height - 1, this.y));
+                }
+            }
+
+            sense(angle) {
+                const sx = this.x + Math.cos(angle) * config.sensorDist;
+                const sy = this.y + Math.sin(angle) * config.sensorDist;
+                const ix = Math.floor(sx);
+                const iy = Math.floor(sy);
+
+                if (ix >= 0 && ix < width && iy >= 0 && iy < height) {
+                    return pheromones[iy * width + ix];
+                }
+                return 0;
+            }
+
+            draw() {
+                ctx.fillStyle = this.hasFood ? '#0f0' : '#fff'; // Green if carrying food
+                ctx.fillRect(this.x, this.y, 2, 2);
+            }
+        }
+
+        // Init Ants
+        for (let i = 0; i < config.antCount; i++) {
+            ants.push(new Ant());
+        }
+
+        // Image Data for Pheromone rendering
+        // traceData initialized in resize() function
+
+        function drawPheromones() {
+            // Decay & Render
+            // Accessing pixel data is slow if we do it poorly.
+            // We use pheromones Float32Array for physics, then put that into ImageData 
+            // We can skip pixels with 0 value to speed up loop? No, iteration is same cost.
+
+            // To optimize: only update ImageData every other frame? Or use WebGL? 
+            // Canvas CPU is fine for < 1920x1080 usually if optimized.
+
+            const pData = traceData.data;
+            const len = pheromones.length;
+
+            for (let i = 0; i < len; i++) {
+                if (pheromones[i] > 0.1) { // Lower threshold to show faint trails
+                    pheromones[i] *= config.evaporationRate;
+
+                    // Boost visual intensity significantly
+                    const val = pheromones[i];
+                    const intensity = Math.min(255, val * 3.0);
+
+                    const idx = i * 4;
+                    pData[idx] = 255;      // R
+                    pData[idx + 1] = 50;     // G
+                    pData[idx + 2] = 50;     // B
+                    pData[idx + 3] = intensity;
+                } else {
+                    pheromones[i] = 0;
+                    // Clear pixel
+                    pData[i * 4 + 3] = 0;
+                }
+            }
+            ctx.putImageData(traceData, 0, 0);
+        }
+
+        function loop() {
+            // Clear background
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            // 1. Update & Draw Pheromones
+            // We draw pheromones first so they are under ants
+            drawPheromones();
+
+            // 2. Draw Home
+            ctx.beginPath();
+            ctx.arc(home.x, home.y, home.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#0055ff';
+            ctx.fill();
+            ctx.strokeStyle = '#44f';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Text Buffer
+            ctx.fillStyle = "white";
+            ctx.font = "bold 12px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("HOME", home.x, home.y);
+
+
+            // 3. Draw Foods
+            for (let f of foods) {
+                if (f.amount > 0) {
+                    ctx.beginPath();
+                    ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = f.color;
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2; // Thicker border for visibility
+                    ctx.stroke();
+
+                    ctx.fillStyle = "black";
+                    ctx.font = "bold 10px Arial";
+                    ctx.fillText("FOOD", f.x, f.y);
+                }
+            }
+
+            // 4. Update & Draw Ants
+            for (let ant of ants) {
+                ant.update();
+                ant.draw();
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        // Interaction (Drag Food)
+        let draggedFood = null;
+        canvas.addEventListener('mousedown', e => {
+            for (let f of foods) {
+                const dx = e.clientX - f.x;
+                const dy = e.clientY - f.y;
+                if (dx * dx + dy * dy < f.radius * f.radius) {
+                    draggedFood = f;
+                    break;
+                }
+            }
+        });
+        window.addEventListener('mousemove', e => {
+            if (draggedFood) {
+                draggedFood.x = e.clientX;
+                draggedFood.y = e.clientY;
+            }
+        });
+        window.addEventListener('mouseup', () => draggedFood = null);
+
+        loop();
+    </script>
+</body>
+
+</html>

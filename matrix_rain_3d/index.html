@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Matrix Digital Rain</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 5px #0f0;
+        }
+    </style>
+    <!-- Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="overlay">
+        <h1>MATRIX 3D</h1>
+        <p>Scroll to Travel • Mouse to Look</p>
+    </div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Config ---
+        const CONFIG = {
+            columnCount: 1000,
+            columnHeight: 40,
+            charSize: 1.0,
+            rainSpeed: 0.8,
+            bloomStrength: 0.8,
+            bloomThreshold: 0,
+            fogDensity: 0.02,
+            travelSpeed: 2.0
+        };
+
+        // --- Setup ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, CONFIG.fogDensity);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 20;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- Texture Generation (Matrix Charset) ---
+        function createMatrixTexture() {
+            const canvas = document.createElement('canvas');
+            const size = 1024;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Background
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, size, size);
+
+            // Chars (Katakana + Latin)
+            const cols = 16;
+            const rows = 16;
+            const cellW = size / cols;
+            const cellH = size / rows;
+
+            // Make font slightly smaller to leave gaps
+            ctx.font = `bold ${cellH * 0.7}px monospace`;
+            ctx.fillStyle = '#0f0';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const chars = 'ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍｦｲｸｺabcdef0123456789';
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const char = chars[Math.floor(Math.random() * chars.length)];
+                    // Add slight glow to text in texture itself
+                    ctx.shadowBlur = 5;
+                    ctx.shadowColor = '#0f0';
+                    ctx.fillText(char, x * cellW + cellW / 2, y * cellH + cellH / 2);
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.magFilter = THREE.NearestFilter;
+            tex.minFilter = THREE.NearestFilter;
+            return tex;
+        }
+
+        const matrixTex = createMatrixTexture();
+
+        // --- Instanced Mesh for Columns ---
+        // Instead of geometry for every char, we use long quads (columns)
+        // and scroll the texture on them via shader.
+        const geometry = new THREE.PlaneGeometry(1, CONFIG.columnHeight);
+
+        // Custom Shader Material
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTexture: { value: matrixTex },
+                uTime: { value: 0 },
+                uSpeed: { value: CONFIG.rainSpeed },
+                uColor: { value: new THREE.Color(0x00ff00) }
+            },
+            vertexShader: `
+                attribute float aSpeed;
+                attribute float aOffset;
+                attribute float aBrightness;
+                varying vec2 vUv;
+                varying float vAlpha;
+                varying float vOffset;
+                varying float vSpeed;
+
+                void main() {
+                    vUv = uv;
+                    vOffset = aOffset; // Random start time
+                    vSpeed = aSpeed;   // Random fall speed
+                    
+                    // Apply Instance Matrix (Essential for InstancedMesh position/rotation/scale)
+                    // This moves each column to its assigned x,y,z
+                    vec4 worldPosition = instanceMatrix * vec4(position, 1.0);
+                    vec4 mvPosition = viewMatrix * worldPosition;
+                    
+                    gl_Position = projectionMatrix * mvPosition;
+                    
+                    // Depth fade
+                    float dist = length(mvPosition.xyz);
+                    vAlpha = aBrightness * (1.0 - smoothstep(10.0, 100.0, dist)); 
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uTexture;
+                uniform float uTime;
+                uniform vec3 uColor;
+                
+                varying vec2 vUv;
+                varying float vOffset;
+                varying float vSpeed;
+                varying float vAlpha;
+
+                // Random function
+                float random(vec2 st) {
+                    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+                }
+
+                void main() {
+                    if (vAlpha < 0.01) discard;
+
+                    // 1. Setup Grid
+                    float tilesY = 40.0; // 1:1 Aspect ratio cells
+                    float scrollSpeed = 5.0 * vSpeed;
+                    float globalY = (vUv.y * tilesY) + uTime * scrollSpeed + vOffset;
+                    
+                    // 2. Head/Tail Drop Effect (The "Rain")
+                    // We generate a noise value based on "floor(globalY)" but scaled down
+                    // to create long streaks of drops with gaps.
+                    
+                    float dropPos = globalY * 0.05; // Scale down to make drops long
+                    float dropNoise = fract(dropPos); // 0..1 ramp
+                    
+                    // Creates a trail: Bright at bottom (0), fading to top (1)
+                    // We inverse it so head is at bottom of falling stream? 
+                    // Let's just create distinct streams.
+                    // A stream is active if sin(y) is positive?
+                    
+                    float streamMask = sin(globalY * 0.15); // Gap generator
+                    if(streamMask < 0.0) discard; // Gaps between streams
+                    
+                    // Trail fade within stream
+                    float trailFade = smoothstep(-1.0, 1.0, streamMask); 
+
+                    // 3. Texture Mapping
+                    float cellId = floor(globalY);
+                    vec2 gridUv = fract(vec2(vUv.x, globalY)); // y is now wrapped per cell
+                    
+                    // Random Char Index
+                    float charIndex = floor(random(vec2(cellId, 1.0)) * 256.0);
+                    
+                    // Atlas UV
+                    float charsPerRow = 16.0;
+                    float col = mod(charIndex, charsPerRow);
+                    float row = floor(charIndex / charsPerRow);
+                    vec2 atlasUv = (vec2(col, row) + gridUv) / charsPerRow;
+                    
+                    vec4 texColor = texture2D(uTexture, atlasUv);
+                    
+                    if(texColor.g < 0.2) discard;
+
+                    // 4. Glitch / Sparkle
+                    // Head of the stream is brightest
+                    float flicker = random(vec2(cellId, uTime * 10.0));
+                    float brightness = 1.0;
+                    
+                    // Highlight the "leading edge" of the sine wave?
+                    if (streamMask > 0.8) brightness = 2.0 + flicker; // Bright head
+                    else brightness = 0.5 + flicker * 0.5; // Dim tail
+                    
+                    gl_FragColor = vec4(uColor * brightness, vAlpha * trailFade);
+                }
+            `,
+            transparent: true,
+            depthWrite: false, // For overlapping characters transparency
+            depthTest: true,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending
+        });
+
+        // Create Instance Attributes
+        const instancedMesh = new THREE.InstancedMesh(geometry, material, CONFIG.columnCount);
+
+        // --- State Arrays for JS-based animation ---
+        const instanceCount = CONFIG.columnCount;
+        const positions = []; // Store {x, y, z} objects
+        const colSpeeds = []; // Store speeds for CPU fall
+
+        // Shader Attributes
+        const shaderSpeeds = [];
+        const shaderOffsets = [];
+        const shaderBrightness = [];
+
+        const dummy = new THREE.Object3D();
+
+        // Initialize State
+        for (let i = 0; i < instanceCount; i++) {
+            // CPU Logic State
+            positions.push({
+                x: (Math.random() - 0.5) * 100,
+                y: (Math.random() - 0.5) * 100,
+                z: (Math.random() - 0.5) * 100 - 50
+            });
+            colSpeeds.push(Math.random() * 0.5 + 0.5);
+
+            // Shader Attribute State
+            shaderSpeeds.push(colSpeeds[i]); // Match CPU speed? or independent? Let's match.
+            shaderOffsets.push(Math.random() * 100);
+            shaderBrightness.push(Math.random() * 0.5 + 0.5);
+
+            // Initial matrix set
+            dummy.position.set(positions[i].x, positions[i].y, positions[i].z);
+            dummy.updateMatrix();
+            instancedMesh.setMatrixAt(i, dummy.matrix);
+        }
+
+        // Restore Attributes so shader works (Visibility!)
+        instancedMesh.geometry.setAttribute('aSpeed', new THREE.InstancedBufferAttribute(new Float32Array(shaderSpeeds), 1));
+        instancedMesh.geometry.setAttribute('aOffset', new THREE.InstancedBufferAttribute(new Float32Array(shaderOffsets), 1));
+        instancedMesh.geometry.setAttribute('aBrightness', new THREE.InstancedBufferAttribute(new Float32Array(shaderBrightness), 1));
+
+        instancedMesh.instanceMatrix.needsUpdate = true;
+        scene.add(instancedMesh);
+
+        // --- Post-Processing (Bloom) ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = CONFIG.bloomThreshold;
+        bloomPass.strength = CONFIG.bloomStrength;
+        bloomPass.radius = 0.5;
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // --- Inputs (Mouse Look Only) ---
+        let mouseX = 0, mouseY = 0;
+
+        window.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX - window.innerWidth / 2) * 0.001;
+            mouseY = (e.clientY - window.innerHeight / 2) * 0.001;
+        });
+
+        // --- Loop ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            const delta = clock.getDelta();
+
+            material.uniforms.uTime.value = time;
+
+            // 1. Dynamic Rain Logic (CPU Fall & Reset)
+            // Move each column down. If below threshold, respawn at top with NEW X/Z.
+
+            const fallSpeedMultiplier = 20.0 * CONFIG.rainSpeed;
+            const bottomLimit = -60;
+            const topReset = 60;
+
+            for (let i = 0; i < instanceCount; i++) {
+                // Fall
+                positions[i].y -= colSpeeds[i] * fallSpeedMultiplier * delta; // Use delta for frame-rate independent movement
+
+                // Respawn
+                if (positions[i].y < bottomLimit) {
+                    positions[i].y = topReset;
+                    positions[i].x = (Math.random() - 0.5) * 120; // Wider range
+                    positions[i].z = (Math.random() - 0.5) * 100 - 40; // Random depth
+                }
+
+                // Update Matrix
+                dummy.position.set(positions[i].x, positions[i].y, positions[i].z);
+                dummy.updateMatrix();
+                instancedMesh.setMatrixAt(i, dummy.matrix);
+            }
+
+            instancedMesh.instanceMatrix.needsUpdate = true;
+
+            // 2. Camera Look
+            camera.rotation.y += ((-mouseX * 2) - camera.rotation.y) * 0.05;
+            camera.rotation.x += ((-mouseY * 2) - camera.rotation.x) * 0.05;
+
+            // Removed camera scroll logic
+            // scrollZ += (targetScrollZ - scrollZ) * 0.1;
+            // camera.position.z = 20 + scrollZ;
+
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+
+</html>

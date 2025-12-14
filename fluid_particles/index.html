@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid Particle Simulation - Canvas API</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050505;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            pointer-events: none;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="instructions">
+        Move Cursor to Interact • Click & Hold to Create Black Hole<br>
+        <span id="stats" style="font-size:12px; opacity:0.5;">Initializing...</span>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- Configuration ---
+        const CONFIG = {
+            particleCount: 3500,
+            particleRadius: 2,
+            neighborhoodRadius: 25, // For collision/interactions
+            repulsionForce: 0.5,
+            blackHoleForce: 2.0,
+            friction: 0.96,
+            colors: {
+                slow: [10, 10, 30], // Deep Blue/Black
+                fast: [0, 255, 200] // Neon Cyan
+            }
+        };
+
+        // --- Setup Canvas ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Optimization
+        let width, height;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- Interaction ---
+        const mouse = { x: -1000, y: -1000, down: false };
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+        window.addEventListener('mousedown', () => mouse.down = true);
+        window.addEventListener('mouseup', () => mouse.down = false);
+        // Touch support
+        window.addEventListener('touchstart', e => {
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            mouse.down = true;
+        });
+        window.addEventListener('touchend', () => mouse.down = false);
+        window.addEventListener('touchmove', e => {
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        });
+
+
+        // --- Spatial Hash Grid Optimization ---
+        // Efficient way to find neighbors without O(N^2) checks
+        class SpatialGrid {
+            constructor(cellSize) {
+                this.cellSize = cellSize;
+                this.grid = new Map();
+            }
+
+            clear() {
+                this.grid.clear();
+            }
+
+            getKey(x, y) {
+                const gx = Math.floor(x / this.cellSize);
+                const gy = Math.floor(y / this.cellSize);
+                return `${gx},${gy}`;
+            }
+
+            insert(particle) {
+                const key = this.getKey(particle.x, particle.y);
+                if (!this.grid.has(key)) {
+                    this.grid.set(key, []);
+                }
+                this.grid.get(key).push(particle);
+            }
+
+            // Get particles from current cell and 8 neighbors
+            getNeighbors(particle) {
+                const neighbors = [];
+                const gx = Math.floor(particle.x / this.cellSize);
+                const gy = Math.floor(particle.y / this.cellSize);
+
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        const key = `${gx + i},${gy + j}`;
+                        if (this.grid.has(key)) {
+                            const cellParticles = this.grid.get(key);
+                            for (let k = 0; k < cellParticles.length; k++) {
+                                neighbors.push(cellParticles[k]);
+                            }
+                        }
+                    }
+                }
+                return neighbors;
+            }
+        }
+
+        const grid = new SpatialGrid(CONFIG.neighborhoodRadius);
+
+
+        // --- Particle System ---
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 1.5 + 1;
+            }
+
+            update() {
+                // 1. Mouse Interaction
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const distSq = dx * dx + dy * dy;
+                const dist = Math.sqrt(distSq);
+
+                if (mouse.down) {
+                    // Black hole (Attraction)
+                    if (dist > 10) { // Don't collapse completely
+                        const force = CONFIG.blackHoleForce * 1000 / distSq;
+                        this.vx += (dx / dist) * force;
+                        this.vy += (dy / dist) * force;
+                    }
+                } else {
+                    // Repulsion (Fluid-like dispersion from cursor)
+                    if (dist < 200) {
+                        const force = (200 - dist) / 200; // 0 to 1
+                        this.vx -= (dx / dist) * force * 2; // Push away
+                        this.vy -= (dy / dist) * force * 2;
+                    }
+                }
+
+                // 2. Neighbor Interaction (Collision/Separation) via Grid
+                const neighbors = grid.getNeighbors(this);
+                let count = 0;
+
+                for (let other of neighbors) {
+                    if (other === this) continue;
+
+                    const ndx = this.x - other.x;
+                    const ndy = this.y - other.y;
+                    const ndistSq = ndx * ndx + ndy * ndy;
+
+                    // Separation (Fluid density constraint)
+                    const minDist = CONFIG.particleRadius * 4;
+                    if (ndistSq > 0 && ndistSq < minDist * minDist) {
+                        const ndist = Math.sqrt(ndistSq);
+                        const force = (minDist - ndist) / minDist;
+
+                        // Apply separate force
+                        const fx = (ndx / ndist) * force * 0.5;
+                        const fy = (ndy / ndist) * force * 0.5;
+
+                        this.vx += fx;
+                        this.vy += fy;
+                        count++;
+                    }
+                }
+
+                // 3. Physics Integration
+                this.vx *= CONFIG.friction;
+                this.vy *= CONFIG.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 4. Boundary Wrap/Bounce
+                if (this.x < 0) { this.x = 0; this.vx *= -1; }
+                if (this.x > width) { this.x = width; this.vx *= -1; }
+                if (this.y < 0) { this.y = 0; this.vy *= -1; }
+                if (this.y > height) { this.y = height; this.vy *= -1; }
+            }
+
+            draw(ctx) {
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const t = Math.min(speed / 10, 1); // 0 to 1 based on speed
+
+                // Simple Heatmap / Gradient Color
+                // Blue (Slow) -> Cyan/Green (Fast) -> White (Very Fast)
+
+                if (t < 0.1) {
+                    ctx.fillStyle = `rgba(30, 60, 100, 0.5)`;
+                } else {
+                    // HSL Transition
+                    // Hue: 200 (Blue) -> 140 (Green) -> 60 (Yellow)
+                    const hue = 200 - (t * 100);
+                    const lightness = 30 + (t * 40);
+                    ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, 0.8)`;
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // --- Main Loop ---
+        const particles = Array.from({ length: CONFIG.particleCount }, () => new Particle());
+        const statsEl = document.getElementById('stats');
+        let lastTime = 0;
+
+        function animate(timestamp) {
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // Clear Screen with trailing effect
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.3)'; // Trail
+            ctx.fillRect(0, 0, width, height);
+
+            // 1. Build Spatial Grid for this frame
+            grid.clear();
+            for (let p of particles) {
+                grid.insert(p);
+            }
+
+            // 2. Update and Draw
+            for (let p of particles) {
+                p.update();
+                p.draw(ctx);
+            }
+
+            // Stats
+            if (timestamp % 1000 < 20) {
+                const fps = Math.round(1000 / dt);
+                statsEl.innerText = `${particles.length} Particles | ${fps} FPS`;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+
+</html>

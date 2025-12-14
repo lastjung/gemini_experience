@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Jelly Slime - Matter.js</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0d0d0d;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #instruction {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #00ffaa;
+            font-family: 'Verdana', sans-serif;
+            pointer-events: none;
+            text-shadow: 0 0 10px #00ffaa;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+
+<body>
+    <div id="instruction">Drag the Jelly! • Soft Body Physics</div>
+    <script>
+        // Module Aliases
+        const Engine = Matter.Engine,
+            Render = Matter.Render,
+            Runner = Matter.Runner,
+            Composites = Matter.Composites,
+            Common = Matter.Common,
+            MouseConstraint = Matter.MouseConstraint,
+            Mouse = Matter.Mouse,
+            Composite = Matter.Composite,
+            Bodies = Matter.Bodies,
+            Body = Matter.Body,
+            Events = Matter.Events;
+
+        // --- Setup ---
+        const engine = Engine.create();
+        const world = engine.world;
+
+        // Create Renderer
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false, // We will do custom rendering anyway later if needed, but standard handles colors too
+                background: '#0d0d0d',
+                pixelRatio: window.devicePixelRatio
+            }
+        });
+
+        // --- Soft Body (The Slime) ---
+        const particleOptions = {
+            friction: 0.05,
+            frictionStatic: 0.1,
+            render: { visible: true, fillStyle: '#00ffaa' }
+        };
+
+        const constraintOptions = {
+            stiffness: 0.1, // Elastic
+            render: { type: 'line', strokeStyle: '#00ffaa', lineWidth: 2 } // Visible Mesh
+        };
+
+        // Create a 5x5 Grid of particles (Soft Body)
+        // xx, yy, columns, rows, columnGap, rowGap, crossBrace, particleRadius, particleOptions, constraintOptions
+        const slimeWidth = 5;
+        const slimeHeight = 5;
+        const startX = window.innerWidth / 2 - 100;
+        const startY = window.innerHeight / 2 - 100;
+
+        const slime = Composites.softBody(
+            startX, startY,
+            slimeWidth, slimeHeight,
+            0, 0,
+            true, // crossBrace for structure stability
+            15,   // radius
+            particleOptions,
+            constraintOptions
+        );
+
+        // Make the outer particles slightly heavier/bigger to form a skin? 
+        // Or just let it be uniform.
+        // Let's customize the visual style of constraints to be neon
+        slime.constraints.forEach(c => {
+            c.render.strokeStyle = 'rgba(0, 255, 170, 0.4)';
+            c.render.lineWidth = 1;
+        });
+
+        // Add to world
+        Composite.add(world, slime);
+
+        // --- Walls ---
+        const wallOptions = {
+            isStatic: true,
+            render: { fillStyle: '#222' }
+        };
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const thickness = 50;
+
+        Composite.add(world, [
+            Bodies.rectangle(width / 2, -thickness / 2, width, thickness, wallOptions), // Top
+            Bodies.rectangle(width / 2, height + thickness / 2, width, thickness, wallOptions), // Bottom
+            Bodies.rectangle(width + thickness / 2, height / 2, thickness, height, wallOptions), // Right
+            Bodies.rectangle(-thickness / 2, height / 2, thickness, height, wallOptions) // Left
+        ]);
+
+        // --- Mouse Control ---
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.1,
+                render: {
+                    visible: false
+                }
+            }
+        });
+        Composite.add(world, mouseConstraint);
+        render.mouse = mouse;
+
+        // --- Custom Render Loop (For Glow Effects) ---
+        // We use Matter.Render for basics, but let's hook into `afterRender` to add Glow
+        Events.on(render, 'afterRender', function () {
+            const ctx = render.context;
+
+            // Draw Glow
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+
+            // Draw constraints (The Mesh)
+            const bodies = Composite.allBodies(slime);
+            const constraints = Composite.allConstraints(slime);
+
+            ctx.beginPath();
+            constraints.forEach(c => {
+                if (c.bodyA && c.bodyB) {
+                    ctx.moveTo(c.bodyA.position.x, c.bodyA.position.y);
+                    ctx.lineTo(c.bodyB.position.x, c.bodyB.position.y);
+                }
+            });
+            ctx.strokeStyle = '#00ffaa';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00ffaa';
+            ctx.stroke();
+
+            // Draw Nodes (Particles)
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ccffdd';
+            ctx.fillStyle = '#00ffaa';
+
+            bodies.forEach(b => {
+                ctx.beginPath();
+                ctx.arc(b.position.x, b.position.y, b.circleRadius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.restore();
+        });
+
+        // --- Run ---
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // --- Resize Handling ---
+        window.addEventListener('resize', () => {
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+            // Re-create walls if needed, but for simplicity we rely on the center mostly
+        });
+
+    </script>
+</body>
+
+</html>

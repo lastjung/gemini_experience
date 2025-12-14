@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Falling Sand: Elemental Alchemy</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 10px 0 5px 0;
+            font-size: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #aaa;
+        }
+
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            margin-bottom: 10px;
+            border: 2px solid #333;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            /* Critical for pixel art look */
+            cursor: crosshair;
+        }
+
+        #toolbar {
+            display: flex;
+            gap: 10px;
+            background: #222;
+            padding: 10px 20px;
+            border-radius: 50px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .tool {
+            width: 50px;
+            /* Increased size */
+            height: 50px;
+            border-radius: 50%;
+            border: 2px solid #444;
+            cursor: pointer;
+            transition: transform 0.1s, border-color 0.2s;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            /* Small text */
+            font-weight: bold;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.9);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+            /* readable on any color */
+            user-select: none;
+        }
+
+        .tool:hover {
+            transform: scale(1.1);
+        }
+
+        .tool.active {
+            border-color: #fff;
+            transform: scale(1.15);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Element Colors */
+        .tool[data-type="sand"] {
+            background: #e6c229;
+        }
+
+        .tool[data-type="water"] {
+            background: #00a8ff;
+        }
+
+        .tool[data-type="fire"] {
+            background: #e84118;
+        }
+
+        .tool[data-type="acid"] {
+            background: #44bd32;
+        }
+
+        .tool[data-type="stone"] {
+            background: #718093;
+        }
+
+        .tool[data-type="eraser"] {
+            background: #333;
+            color: #fff;
+            border: 2px solid #666;
+        }
+
+        #mini-guide {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            text-align: right;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .guide-item {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 2px;
+            text-shadow: 1px 1px 1px #000;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Falling Elements</h1>
+
+    <div id="toolbar">
+        <div class="tool active" data-type="sand" title="Sand">SAND</div>
+        <div class="tool" data-type="water" title="Water">WATER</div>
+        <div class="tool" data-type="stone" title="Stone">STONE</div>
+        <div class="tool" data-type="fire" title="Fire">FIRE</div>
+        <div class="tool" data-type="acid" title="Acid">ACID</div>
+        <div class="tool" data-type="eraser" title="Reset Game" style="border-radius: 10px;">RESET</div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="sandCanvas"></canvas>
+        <div id="mini-guide">
+            <div class="guide-item">Sand sinks in Water</div>
+            <div class="guide-item">Fire boils Water</div>
+            <div class="guide-item">Acid dissolves Stone</div>
+            <div class="guide-item">Stone falls & piles</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Setup ---
+        const canvas = document.getElementById('sandCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Optimization
+
+        // Simulation Resolution (Smaller than screen for pixel look & speed)
+        const width = 200;
+        const height = 200;
+        const scale = 3; // Visual scale
+
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.width = (width * scale) + 'px';
+        canvas.style.height = (height * scale) + 'px';
+
+        // --- Data ---
+        // 1D array for better cache locality (though JS is high level, it helps logic)
+        // grid[i] = typeId
+        let grid = new Uint8Array(width * height);
+        // Secondary grid for simultaneous updates (technically sequential but avoids some artifacts)
+        // Actually for falling sand, usually updating strictly bottom-up in one grid is fine and faster.
+        // We will stick to single grid with careful iteration direction.
+
+        // Element IDs
+        const EMPTY = 0;
+        const SAND = 1;
+        const WATER = 2;
+        const STONE = 3;
+        const FIRE = 4;
+        const ACID = 5;
+        const STEAM = 6;
+        const SMOKE = 7;
+
+        // Element Properties
+        const colors = {
+            [EMPTY]: [17, 17, 17], // #111
+            [SAND]: [230, 194, 41],
+            [WATER]: [0, 168, 255],
+            [STONE]: [113, 128, 147],
+            [FIRE]: [232, 65, 24],
+            [ACID]: [68, 189, 50],
+            [STEAM]: [220, 221, 225],
+            [SMOKE]: [50, 50, 50]
+        };
+
+        // --- Image Data Buffer for Rendering ---
+        const imageData = ctx.createImageData(width, height);
+        const data = imageData.data; // Reference to the underlying buffer
+
+        // --- Logic ---
+        let currentType = SAND;
+        let isDrawing = false;
+        let brushSize = 6;
+
+        // Update Loop
+        function update() {
+            // Need to iterate somewhat randomly or alternate L/R to prevent bias?
+            // Simple bottom-up is standard. 
+            // To prevent Water bias lefit/right, we can flip a random bool.
+
+            for (let y = height - 1; y >= 0; y--) {
+                // Determine horizontal scan direction randomly per row to avoid bias
+                const rightToLeft = Math.random() > 0.5;
+                const startX = rightToLeft ? width - 1 : 0;
+                const endX = rightToLeft ? -1 : width;
+                const step = rightToLeft ? -1 : 1;
+
+                for (let x = startX; x !== endX; x += step) {
+                    const i = y * width + x;
+                    const type = grid[i];
+
+                    if (type === EMPTY) continue;
+
+                    // --- STONE ---
+                    if (type === STONE) {
+                        const below = (y + 1) * width + x;
+                        if (y + 1 < height) {
+                            // Fall down
+                            const belowType = grid[below];
+                            if (belowType === EMPTY || belowType === WATER || belowType === FIRE || belowType === ACID || belowType === STEAM || belowType === SMOKE) {
+                                // Fall or Sink (Swap)
+                                grid[below] = STONE;
+                                grid[i] = belowType === EMPTY ? EMPTY : belowType;
+                            } else {
+                                // Pile (Slide)
+                                const dir = Math.random() > 0.5 ? 1 : -1;
+                                const slideA = (y + 1) * width + (x + dir);
+                                const slideB = (y + 1) * width + (x - dir);
+
+                                if (x + dir >= 0 && x + dir < width && grid[slideA] === EMPTY) {
+                                    grid[slideA] = STONE;
+                                    grid[i] = EMPTY;
+                                } else if (x - dir >= 0 && x - dir < width && grid[slideB] === EMPTY) {
+                                    grid[slideB] = STONE;
+                                    grid[i] = EMPTY;
+                                }
+                            }
+                        }
+                    }
+
+                    // --- SAND ---
+                    if (type === SAND) {
+                        const below = (y + 1) * width + x;
+                        if (y + 1 < height) {
+                            // Fall down
+                            if (grid[below] === EMPTY) {
+                                grid[below] = SAND;
+                                grid[i] = EMPTY;
+                            } else if (grid[below] === WATER || grid[below] === ACID) {
+                                // Sink in liquids
+                                const liquid = grid[below];
+                                grid[below] = SAND;
+                                grid[i] = liquid;
+                            } else {
+                                // Slide down-left or down-right
+                                const dir = Math.random() > 0.5 ? 1 : -1;
+                                const slideA = (y + 1) * width + (x + dir);
+                                const slideB = (y + 1) * width + (x - dir);
+
+                                if (x + dir >= 0 && x + dir < width && grid[slideA] === EMPTY) {
+                                    grid[slideA] = SAND;
+                                    grid[i] = EMPTY;
+                                } else if (x - dir >= 0 && x - dir < width && grid[slideB] === EMPTY) {
+                                    grid[slideB] = SAND;
+                                    grid[i] = EMPTY;
+                                }
+                            }
+                        }
+                    }
+
+                    // --- WATER ---
+                    else if (type === WATER) {
+                        const below = (y + 1) * width + x;
+                        if (y + 1 < height) {
+                            if (grid[below] === EMPTY) {
+                                grid[below] = WATER;
+                                grid[i] = EMPTY;
+                            } else if (grid[below] === FIRE) {
+                                // Extinguish fire -> steam
+                                grid[below] = STEAM;
+                                grid[i] = STEAM;
+                            } else {
+                                // Spread horizontal
+                                const dir = Math.random() > 0.5 ? 1 : -1;
+                                const sideA = y * width + (x + dir);
+                                const sideB = y * width + (x - dir);
+
+                                if (x + dir >= 0 && x + dir < width && grid[sideA] === EMPTY) {
+                                    grid[sideA] = WATER;
+                                    grid[i] = EMPTY;
+                                } else if (x - dir >= 0 && x - dir < width && grid[sideB] === EMPTY) {
+                                    grid[sideB] = WATER;
+                                    grid[i] = EMPTY;
+                                }
+                            }
+                        }
+                    }
+
+                    // --- FIRE ---
+                    else if (type === FIRE) {
+                        // Life check
+                        if (Math.random() < 0.02) { // Lasts longer
+                            grid[i] = EMPTY;
+                            continue;
+                        }
+
+                        // AGGRESSIVE BOILING: Check all neighbors
+                        // If Fire touches Water, boil it instantly
+                        const neighbors = [
+                            (y + 1) * width + x, // Below
+                            (y - 1) * width + x, // Above
+                            y * width + (x + 1), // Right
+                            y * width + (x - 1)  // Left
+                        ];
+
+                        let boiled = false;
+                        for (let ni of neighbors) {
+                            if (ni >= 0 && ni < grid.length && grid[ni] === WATER) {
+                                grid[ni] = STEAM; // Boil neighbor
+                                boiled = true;
+                            }
+                        }
+                        if (boiled) {
+                            grid[i] = STEAM; // Fire uses its energy to boil
+                            continue;
+                        }
+
+                        // Gravity (Fall down)
+                        const below = (y + 1) * width + x;
+                        if (y + 1 < height) {
+                            if (grid[below] === EMPTY) {
+                                grid[below] = FIRE;
+                                grid[i] = EMPTY;
+                            } else if (grid[below] === STEAM || grid[below] === SMOKE) {
+                                // Fall through gas
+                                const gas = grid[below];
+                                grid[below] = FIRE;
+                                grid[i] = gas;
+                            } else {
+                                // Spread/Slide
+                                const dir = Math.random() > 0.5 ? 1 : -1;
+                                const side = (y + 1) * width + (x + dir);
+                                if (x + dir >= 0 && x + dir < width && grid[side] === EMPTY) {
+                                    grid[side] = FIRE;
+                                    grid[i] = EMPTY;
+                                }
+                            }
+                        }
+                    }
+
+                    // --- ACID ---
+                    else if (type === ACID) {
+                        const below = (y + 1) * width + x;
+
+                        // Corrode neighbors
+                        const neighbors = [
+                            (y + 1) * width + x,
+                            y * width + (x + 1),
+                            y * width + (x - 1)
+                        ];
+
+                        for (let ni of neighbors) {
+                            if (ni >= 0 && ni < grid.length) {
+                                if (grid[ni] === STONE || grid[ni] === SAND) {
+                                    if (Math.random() > 0.1) { // Fast corrosion
+                                        grid[ni] = Math.random() > 0.5 ? SMOKE : EMPTY;
+                                        grid[i] = Math.random() > 0.8 ? SMOKE : EMPTY; // Acid used up
+                                    }
+                                }
+                            }
+                        }
+
+                        // Physics (Gravity)
+                        if (grid[i] === ACID && y + 1 < height) {
+                            if (grid[below] === EMPTY) {
+                                grid[below] = ACID;
+                                grid[i] = EMPTY;
+                            } else if (grid[below] === WATER) {
+                                // Mix/Sink in water
+                                if (Math.random() > 0.5) {
+                                    grid[below] = ACID;
+                                    grid[i] = WATER;
+                                }
+                            } else {
+                                // Spread horizontal
+                                const dir = Math.random() > 0.5 ? 1 : -1;
+                                const side = y * width + (x + dir);
+                                if (x + dir >= 0 && x + dir < width && grid[side] === EMPTY) {
+                                    grid[side] = ACID;
+                                    grid[i] = EMPTY;
+                                }
+                            }
+                        }
+                    }
+
+                    // --- STEAM / SMOKE ---
+                    else if (type === STEAM || type === SMOKE) {
+                        if (Math.random() < 0.005) { // Very slow dissipation (Long lasting clouds)
+                            grid[i] = EMPTY;
+                            continue;
+                        }
+                        // Rise vigorously
+                        const moveY = y - 1;
+                        const moveX = x + (Math.floor(Math.random() * 3) - 1);
+
+                        if (moveY >= 0 && moveX >= 0 && moveX < width) {
+                            const dest = moveY * width + moveX;
+                            if (grid[dest] === EMPTY) {
+                                grid[dest] = type;
+                                grid[i] = EMPTY;
+                            } else if (grid[dest] === WATER && type === STEAM) {
+                                // Pass through water? No, bubble up
+                                grid[dest] = STEAM;
+                                grid[i] = WATER;
+                            } else if (grid[dest] === type) {
+                                // Spread horizontal if blocked up?
+                                // ...
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
+        function draw() {
+            // Fill imageData buffer
+            // 4 bytes per pixel (R, G, B, A)
+            for (let i = 0; i < grid.length; i++) {
+                const type = grid[i];
+                const col = colors[type];
+                const px = i * 4;
+
+                // Simple Variation for "noise" texture
+                let r = col[0], g = col[1], b = col[2];
+                if (type !== EMPTY && type !== STONE) {
+                    // Add noise
+                    const variance = (i * 1234.5678) % 20 - 10;
+                    r = Math.max(0, Math.min(255, r + variance));
+                    g = Math.max(0, Math.min(255, g + variance));
+                    b = Math.max(0, Math.min(255, b + variance));
+                }
+
+                data[px] = r;
+                data[px + 1] = g;
+                data[px + 2] = b;
+                data[px + 3] = 255;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // --- Interaction ---
+        function paint(cx, cy) {
+            // Apply brush to grid
+            const radius = brushSize;
+
+            // Convert screen mouse to canvas coords
+            // Canvas is scaled by CSS 'scale'
+            const gx = Math.floor(cx / scale);
+            const gy = Math.floor(cy / scale);
+
+            for (let y = -radius; y <= radius; y++) {
+                for (let x = -radius; x <= radius; x++) {
+                    if (x * x + y * y <= radius * radius) {
+                        const tx = gx + x;
+                        const ty = gy + y;
+                        if (tx >= 0 && tx < width && ty >= 0 && ty < height) {
+                            // Don't overwrite if not empty, unless eraser or strong element?
+                            // Standard behavior: overwrite mostly or fill empty
+
+                            const idx = ty * width + tx;
+
+                            if (currentType === EMPTY) {
+                                grid[idx] = EMPTY; // Eraser
+                            } else if (grid[idx] === EMPTY || grid[idx] !== currentType) {
+                                // Maybe don't replace everything instantly
+                                // If stone, replace. If same, ignore.
+                                grid[idx] = currentType;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            isDrawing = true;
+            paint(e.offsetX, e.offsetY);
+        });
+        window.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mousemove', e => {
+            if (isDrawing) paint(e.offsetX, e.offsetY);
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            paint(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+        }, { passive: false });
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (isDrawing) {
+                const rect = canvas.getBoundingClientRect();
+                paint(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+            }
+        }, { passive: false });
+        window.addEventListener('touchend', () => isDrawing = false);
+
+        // Toolbar
+        document.querySelectorAll('.tool').forEach(tool => {
+            tool.addEventListener('click', () => {
+                const type = tool.dataset.type;
+
+                if (type === 'eraser') {
+                    // RESET GAME: Clear entire grid
+                    grid.fill(EMPTY);
+                    return;
+                }
+
+                document.querySelector('.tool.active').classList.remove('active');
+                tool.classList.add('active');
+
+                if (type === 'sand') currentType = SAND;
+                else if (type === 'water') currentType = WATER;
+                else if (type === 'stone') currentType = STONE;
+                else if (type === 'fire') currentType = FIRE;
+                else if (type === 'acid') currentType = ACID;
+            });
+        });
+
+        // Loop
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+        loop();
+
+    </script>
+</body>
+
+</html>

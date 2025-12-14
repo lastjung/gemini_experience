@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk Globe - Interactive 3D</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #0ff;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 5px #0ff;
+        }
+    </style>
+    <!-- Import Map for Three.js and Addons -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="info">Cyberpunk Wireframe Globe<br>Drag to Rotate • Scroll to Zoom</div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Configuration ---
+        const CONFIG = {
+            globeRadius: 10,
+            globeSegments: 32,
+            beaconCount: 15,
+            beaconColor: 0x00ffff, // Neon Blue
+            wireframeColor: 0x2244ff, // Darker Blue
+            backgroundColor: 0x020205,
+            bloomStrength: 1.5,
+            bloomRadius: 0.4,
+            bloomThreshold: 0
+        };
+
+        // --- Scene Setup ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(CONFIG.backgroundColor, 0.02);
+        scene.background = new THREE.Color(CONFIG.backgroundColor);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(20, 10, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        // --- Orbit Controls ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 15;
+        controls.maxDistance = 60;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // --- Post-Processing (Bloom) ---
+        const renderScene = new RenderPass(scene, camera);
+
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            1.5, 0.4, 0.85
+        );
+        bloomPass.threshold = CONFIG.bloomThreshold;
+        bloomPass.strength = CONFIG.bloomStrength;
+        bloomPass.radius = CONFIG.bloomRadius;
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // --- Objects ---
+
+        // 1. Stars Background
+        function createStars() {
+            const geometry = new THREE.BufferGeometry();
+            const count = 2000;
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i++) {
+                positions[i] = (Math.random() - 0.5) * 200;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.1,
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            return new THREE.Points(geometry, material);
+        }
+        scene.add(createStars());
+
+        // 2. The Globe (Sphere + Wireframe)
+        const globeGroup = new THREE.Group();
+        scene.add(globeGroup);
+
+        // Black sphere to hide stars behind
+        const blackSphereGeo = new THREE.SphereGeometry(CONFIG.globeRadius * 0.99, CONFIG.globeSegments, CONFIG.globeSegments);
+        const blackSphereMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const blackSphere = new THREE.Mesh(blackSphereGeo, blackSphereMat);
+        globeGroup.add(blackSphere);
+
+        // Wireframe Sphere
+        const globeGeo = new THREE.SphereGeometry(CONFIG.globeRadius, CONFIG.globeSegments, CONFIG.globeSegments);
+        const wireframe = new THREE.WireframeGeometry(globeGeo);
+        const lineMat = new THREE.LineBasicMaterial({
+            color: CONFIG.wireframeColor,
+            transparent: true,
+            opacity: 0.3
+        });
+        const globeLines = new THREE.LineSegments(wireframe, lineMat);
+        globeGroup.add(globeLines);
+
+        // 3. Beacons & Waves
+        const beacons = [];
+        const waves = [];
+
+        // Helper to get random point on sphere surface
+        function getRandomPointOnSphere(radius) {
+            const u = Math.random();
+            const v = Math.random();
+            const theta = 2 * Math.PI * u;
+            const phi = Math.acos(2 * v - 1);
+
+            const x = radius * Math.sin(phi) * Math.cos(theta);
+            const y = radius * Math.sin(phi) * Math.sin(theta);
+            const z = radius * Math.cos(phi);
+
+            return new THREE.Vector3(x, y, z);
+        }
+
+        function createBeacon(position, normal) {
+            // Beacon Geometry (Cylinder)
+            const height = Math.random() * 2 + 1; // Random height
+            const geo = new THREE.CylinderGeometry(0.05, 0.05, height, 8);
+            geo.translate(0, height / 2, 0); // Pivot at bottom
+            geo.rotateX(Math.PI / 2); // Align to Z temporarily to lookAt correctly
+
+            const mat = new THREE.MeshBasicMaterial({ color: CONFIG.beaconColor });
+            const mesh = new THREE.Mesh(geo, mat);
+
+            mesh.position.copy(position);
+            mesh.lookAt(new THREE.Vector3(0, 0, 0)); // Look at center (inverted)
+            // Fix rotation to point OUTWARDS
+            // lookAt aligns +Z to target. We want cylinder Y to point along normal.
+            // Cylinder Y is up. 
+            // We use a Quaternion to align Up (0,1,0) to Position (Normal)
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), position.clone().normalize());
+
+            globeGroup.add(mesh);
+
+            beacons.push({
+                mesh: mesh,
+                baseHeight: height,
+                pulseSpeed: Math.random() * 2 + 1,
+                timeOffset: Math.random() * 10
+            });
+
+            // Create Waves for this beacon
+            createWave(position);
+        }
+
+        function createWave(position) {
+            // Ring geometry lying flat on the surface
+            const geo = new THREE.RingGeometry(0.1, 0.2, 32);
+            const mat = new THREE.MeshBasicMaterial({
+                color: CONFIG.beaconColor,
+                transparent: true,
+                opacity: 0,
+                side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+
+            mesh.position.copy(position.clone().multiplyScalar(1.01)); // Slightly above surface
+            mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), position.clone().normalize());
+
+            globeGroup.add(mesh);
+
+            waves.push({
+                mesh: mesh,
+                scale: 0,
+                life: Math.random(), // Start at random life
+                speed: Math.random() * 0.5 + 0.2
+            });
+        }
+
+        // Initialize Beacons
+        for (let i = 0; i < CONFIG.beaconCount; i++) {
+            const pos = getRandomPointOnSphere(CONFIG.globeRadius);
+            createBeacon(pos);
+        }
+
+        // --- Animation Loop ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            const delta = clock.getDelta();
+
+            controls.update();
+
+            // Animate Beacons (Pulsing height/color)
+            beacons.forEach(b => {
+                const scale = 1 + Math.sin(time * b.pulseSpeed + b.timeOffset) * 0.3;
+                b.mesh.scale.set(1, scale, 1);
+            });
+
+            // Animate Waves (Spreading out)
+            waves.forEach(w => {
+                w.life += 0.01 * w.speed;
+                if (w.life > 1) w.life = 0;
+
+                // Scale up
+                const currentScale = w.life * 8; // Max size
+                w.mesh.scale.set(currentScale, currentScale, 1);
+
+                // Fade out
+                w.mesh.material.opacity = 1 - w.life; /* Fade out linearly */
+            });
+
+            // Rotate globe slowly
+            // globeGroup.rotation.y += 0.001; 
+
+            composer.render();
+        }
+
+        // --- Resize Handler ---
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>

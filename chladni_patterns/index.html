@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chladni Patterns (Cymatics Simulation)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            color: #fff;
+            font-family: sans-serif;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            background: #111;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 280px;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            backdrop-filter: blur(5px);
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin: 10px 0;
+            accent-color: #0ff;
+        }
+
+        /* Make the number input look cool */
+        input[type=number] {
+            background: transparent;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #0ff;
+            font-size: 1.2rem;
+            font-weight: bold;
+            width: 80px;
+            padding: 5px;
+            margin-left: 10px;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.2rem;
+            color: #ccc;
+        }
+
+        .label {
+            font-size: 0.9rem;
+            color: #888;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #freq-display {
+            color: #0ff;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 8px 16px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #0ff;
+            color: #0ff;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: rgba(0, 255, 255, 0.3);
+        }
+
+        .description {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 15px;
+            line-height: 1.4;
+            text-align: left;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="canvas-container">
+        <canvas id="plate"></canvas>
+    </div>
+
+    <div id="controls">
+        <h1>Chladni Resonance</h1>
+        <div class="label">
+            Frequency (Hz)
+            <span id="freq-display">5.00</span>
+        </div>
+        <input type="range" id="freqSlider" min="2" max="20" step="0.05" value="5">
+
+        <div class="label" style="margin-top:15px">Plate Shape</div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="setShape('square')" id="btn-square" style="background:rgba(0,255,255,0.3)">Square</button>
+            <button onclick="setShape('circle')" id="btn-circle">Circle</button>
+        </div>
+
+        <div class="description">
+            <strong>How it works:</strong><br>
+            The metal plate vibrates at the set frequency.
+            Sand settles at Nodes (still areas).
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('plate');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('freqSlider');
+        const display = document.getElementById('freq-display');
+        const btnSquare = document.getElementById('btn-square');
+        const btnCircle = document.getElementById('btn-circle');
+
+        // Sync inputs
+        slider.addEventListener('input', () => {
+            update();
+        });
+
+        // Config
+        const PARTICLE_COUNT = 18000;
+        let width, height;
+        let particles = [];
+        let currentShape = 'square';
+
+        function init() {
+            onResize();
+            scrambleParticles();
+            loop();
+        }
+
+        function setShape(shape) {
+            currentShape = shape;
+
+            // Toggle active button style
+            const activeBg = 'rgba(0, 255, 255, 0.3)';
+            const inactiveBg = 'rgba(0, 255, 255, 0.1)';
+
+            btnSquare.style.background = shape === 'square' ? activeBg : inactiveBg;
+            btnCircle.style.background = shape === 'circle' ? activeBg : inactiveBg;
+
+            scrambleParticles();
+        }
+
+        function scrambleParticles() {
+            particles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                if (currentShape === 'square') {
+                    particles.push({ x: Math.random(), y: Math.random() });
+                } else {
+                    // Random point in circle
+                    const a = Math.random() * 2 * Math.PI;
+                    const r = Math.sqrt(Math.random()) * 0.5; // Uniform distribution
+                    particles.push({
+                        x: 0.5 + r * Math.cos(a),
+                        y: 0.5 + r * Math.sin(a)
+                    });
+                }
+            }
+        }
+
+        function onResize() {
+            const size = Math.min(window.innerWidth, window.innerHeight) * 0.8;
+            canvas.width = size;
+            canvas.height = size;
+            width = size;
+            height = size;
+        }
+        window.addEventListener('resize', onResize);
+
+        // Chladni Formula
+        function getVibration(x, y, m, n) {
+            const PI = Math.PI;
+
+            if (currentShape === 'circle') {
+                // Polar Coords relative to center (0.5, 0.5)
+                const dx = x - 0.5;
+                const dy = y - 0.5;
+                const r = Math.sqrt(dx * dx + dy * dy) * 2; // Normalize 0..1 (radius is 0.5)
+                const theta = Math.atan2(dy, dx);
+
+                // Circular Modes: Radial (m) and Angular (n) typically
+                // Approx: sin(n*theta) for angular cuts, cos(m*pi*r) for rings
+                // Let's mix them.
+                return Math.sin(n * theta) * Math.cos(m * PI * r);
+            } else {
+                // Square Modes
+                const v1 = Math.cos(n * PI * x) * Math.cos(m * PI * y);
+                const v2 = Math.cos(m * PI * x) * Math.cos(n * PI * y);
+                return v1 - v2;
+            }
+        }
+
+        function update() {
+            const val = parseFloat(slider.value);
+            display.textContent = val.toFixed(2);
+
+            // Derive Modes (m, n) from slider
+            const n = val;
+            const m = val + 2;
+
+            const speed = 0.08;
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                let p = particles[i];
+                const amp = getVibration(p.x, p.y, n, m);
+                const mag = Math.abs(amp);
+
+                if (mag > 0.05) {
+                    const moveAmt = mag * mag * speed;
+                    p.x += (Math.random() - 0.5) * moveAmt;
+                    p.y += (Math.random() - 0.5) * moveAmt;
+
+                    // Boundary Constraints
+                    if (currentShape === 'square') {
+                        if (p.x < 0) p.x = 0;
+                        if (p.x > 1) p.x = 1;
+                        if (p.y < 0) p.y = 0;
+                        if (p.y > 1) p.y = 1;
+                    } else {
+                        // Circle Constraint
+                        const dx = p.x - 0.5;
+                        const dy = p.y - 0.5;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > 0.49) { // Keep slightly inside 0.5
+                            // Push back towards center
+                            const angle = Math.atan2(dy, dx);
+                            p.x = 0.5 + Math.cos(angle) * 0.49;
+                            p.y = 0.5 + Math.sin(angle) * 0.49;
+                        }
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            // Clear
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw Plate Background
+            ctx.fillStyle = '#1a1a1a';
+            if (currentShape === 'square') {
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.beginPath();
+                ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                let p = particles[i];
+                ctx.fillRect(p.x * width, p.y * height, 1.5, 1.5);
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

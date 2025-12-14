@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Retrowave Flight Sim</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #d946ef;
+            font-family: 'Courier New', Courier, monospace;
+            text-align: center;
+            text-shadow: 0 0 10px #d946ef;
+            pointer-events: none;
+            mix-blend-mode: screen;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 40px;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+        }
+    </style>
+    <!-- Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "simplex-noise": "https://unpkg.com/simplex-noise@4.0.1/dist/esm/simplex-noise.js"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="ui">
+        <h1>Neon Flight</h1>
+    </div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { createNoise2D } from 'simplex-noise';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Config ---
+        const CONFIG = {
+            speed: 80.0, // Much faster
+            terrainWidth: 200,
+            terrainLength: 200,
+            segments: 100, // Grid density
+            maxHeight: 25, // Higher peaks
+            noiseScale: 0.08,
+            warpScale: 0.5 // Distortion
+        };
+
+        // --- Setup ---
+        const scene = new THREE.Scene();
+        // Fog for depth fading (Dark Purple/Blue)
+        const fogColor = new THREE.Color(0x1a0b2e);
+        scene.fog = new THREE.FogExp2(fogColor, 0.02);
+        scene.background = fogColor;
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 10, 30);
+        camera.lookAt(0, 0, -50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- Terrain (Moving Plane) ---
+        const geometry = new THREE.PlaneGeometry(
+            CONFIG.terrainWidth,
+            CONFIG.terrainLength,
+            CONFIG.segments,
+            CONFIG.segments
+        );
+        geometry.rotateX(-Math.PI / 2); // Lay flat
+
+        // Material: Wireframe with glowing color
+        // Using ShaderMaterial to manipulate line color based on height/distance if needed, 
+        // but simple LineSegments with color gradient is easier for pure wireframe look.
+        // Let's use BasicMaterial wireframe first and manipulate vertices.
+
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xff00ff, // Magenta
+            wireframe: true,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const terrain = new THREE.Mesh(geometry, material);
+        scene.add(terrain);
+
+        // A second plane for solid fill below wireframe to hide what's behind
+        const fillMaterial = new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            polygonOffset: true,
+            polygonOffsetFactor: 1, // Draw behind lines
+            polygonOffsetUnits: 1
+        });
+        const terrainFill = new THREE.Mesh(geometry, fillMaterial);
+        scene.add(terrainFill);
+
+
+        // --- Retro Sun ---
+        const sunGeo = new THREE.CircleGeometry(40, 64);
+        const sunMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uColorTop: { value: new THREE.Color(0xffaa00) }, // Yellow/Orange
+                uColorBottom: { value: new THREE.Color(0xff0055) } // Pink/Red
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec3 uColorTop;
+                uniform vec3 uColorBottom;
+                varying vec2 vUv;
+
+                void main() {
+                    // Gradient
+                    vec3 color = mix(uColorBottom, uColorTop, vUv.y);
+                    
+                    // Retro Stripes (Cutout)
+                    float stripes = sin(vUv.y * 20.0 - uTime * 0.5); // Moving stripes? Or static? usually static or slow up
+                    // Let's make stripes get thicker at bottom
+                    float y = vUv.y;
+                    float stripeWidth = pow(1.0 - y, 2.0) * 0.5; // Thicker near bottom
+                    
+                    // Simple stepped stripes
+                    float stripe = step(0.1 + (1.0-y)*0.4, sin((y - 0.2) * 40.0));
+                    
+                    if (y < 0.55 && stripe < 0.5) color *= 0.0; // Cut out black lines
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+            transparent: true
+        });
+        const sun = new THREE.Mesh(sunGeo, sunMat);
+        sun.position.z = -100; // Far background
+        sun.position.y = 20;
+        scene.add(sun);
+
+
+        // --- Post-Processing ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.strength = 1.2;
+        bloomPass.radius = 0.8;
+        bloomPass.threshold = 0.1;
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+
+        // --- Noise & Animation ---
+        const noise2D = createNoise2D();
+        const positionAttribute = geometry.attributes.position;
+        const vertex = new THREE.Vector3();
+
+        let flyTime = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            flyTime += 0.01;
+
+            // Move Sun stripes
+            sun.material.uniforms.uTime.value = flyTime;
+
+            // Animate Terrain
+            // We simulate movement by offseting noise sampling
+            const moveSpeed = CONFIG.speed * 0.01;
+            const timeOffset = flyTime * 2.0; // "Dancing" terrain over time
+
+            for (let i = 0; i < positionAttribute.count; i++) {
+                vertex.fromBufferAttribute(positionAttribute, i);
+
+                // vertex.x and vertex.y correspond to the plane's local x,y (which are x,z world because of rotation)
+                // But since we rotated geometry, let's just look at raw data.
+                // PlaneGeometry created on XY plane. We rotate -90 X. 
+                // So local X = World X, local Y = World -Z.
+
+                // We want to scroll along Y (World -Z).
+                // To animate infinite scroll, we shift the noise sampling y coordinate
+                // But we don't actually move the mesh vertices in X/Y plane, we just change their Z height (local Z).
+
+                // Original X, Y coords
+                // Since we want the grid to appear to move towards camera, we subtract from Y sample
+
+                // We need original UVs or positions to sample noise consistently.
+                // Reconstruct grid pos from index.
+                // Setup:
+                // ix = i % (segs+1)
+                // iy = floor(i / (segs+1))
+                // normalize to 0..1 etc.
+
+                // Simpler: Just rely on current X/Y values, assuming they don't change, only Z changes.
+                // Wait, Position attr is 3 floats per vertex. We mod z (height)
+
+                // The geometry is effectively:
+                // x: width
+                // y: length (depth)
+                // z: height (displace this)
+
+                // Let's assume standard PlaneGeometry layout.
+                const x = vertex.x;
+                const y = vertex.y; // This maps to world -z depth
+
+                // Noise Displacement: More complex layering (FBM-like)
+                // Scroll Y to simulate flight
+                const noiseY = y - flyTime * CONFIG.speed;
+                const noiseX = x + Math.sin(flyTime * 0.5) * 10.0; // Meandering path
+
+                // Octave 1: Large features
+                let n1 = noise2D(noiseX * CONFIG.noiseScale, noiseY * CONFIG.noiseScale);
+
+                // Octave 2: Warp/Distortion
+                let n2 = noise2D(noiseX * CONFIG.noiseScale * 2.0 + flyTime, noiseY * CONFIG.noiseScale * 2.0);
+
+                // Combine: "Glitchy" terrain that morphs
+                let terrainHeight = (n1 + n2 * 0.5) * CONFIG.maxHeight;
+
+                // Add "Synthwave Pulse" - rhythmic spikes
+                const beat = Math.sin(flyTime * 10.0) > 0.9 ? 2.0 : 0.0; // Kick drum effect
+                const pulse = Math.cos(x * 0.2) * Math.sin(y * 0.2 + flyTime * 5.0) * beat;
+
+                // Fade edges to flat (fog blend)
+                const distFromCenter = Math.abs(x) / (CONFIG.terrainWidth / 2);
+                const edgeFade = 1.0 - Math.pow(distFromCenter, 3.0);
+
+                // Apply Height 
+                let h = (terrainHeight + pulse) * edgeFade;
+                if (h < -10) h = -10; // Floor clamp
+
+                // Update Z (Height)
+                positionAttribute.setZ(i, h);
+            }
+
+            positionAttribute.needsUpdate = true;
+            geometry.computeVertexNormals();
+
+            // Camera Sway / Turbulence
+            camera.position.x = Math.sin(flyTime * 2.0) * 5.0;
+            camera.position.y = 10 + Math.cos(flyTime * 3.0) * 2.0;
+            camera.rotation.z = Math.sin(flyTime * 1.5) * 0.1; // Bank turn effect
+
+            // Color update?
+            // Maybe pulse the color
+            const hue = (flyTime * 0.05) % 1;
+            material.color.setHSL(0.8 + Math.sin(flyTime) * 0.1, 1.0, 0.5); // Magenta/Purple range
+
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+
+</html>
