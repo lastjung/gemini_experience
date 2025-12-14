@@ -21,10 +21,45 @@
             width: 100%;
             height: 100%;
         }
+
+        #ui {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            pointer-events: none;
+            font-family: 'Courier New', Courier, monospace;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(2px);
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 1.5rem;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8);
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1rem;
+            margin-top: 10px;
+            letter-spacing: 2px;
+        }
     </style>
 </head>
 
 <body>
+    <div id="ui">
+        <h1>Psychedelic Lens</h1>
+        <div class="subtitle">Move mouse to warp space-time</div>
+    </div>
     <canvas id="glcanvas"></canvas>
 
     <!-- Vertex Shader -->

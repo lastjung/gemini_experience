@@ -579,6 +579,9 @@
             const animate = () => {
                 requestAnimationFrame(animate);
 
+                // Optimization: Pause rendering when modal is open to save resources for the iframe
+                if (isModalOpen) return;
+
                 stars.rotation.y += 0.0002;
                 sun.rotation.y += 0.001;
                 planet.rotation.y += 0.002;

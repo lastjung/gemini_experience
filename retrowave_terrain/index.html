@@ -17,7 +17,7 @@
 
         #ui {
             position: absolute;
-            top: 20px;
+            top: 10px;
             left: 50%;
             transform: translateX(-50%);
             color: #d946ef;
@@ -33,6 +33,16 @@
             font-size: 40px;
             text-transform: uppercase;
             letter-spacing: 5px;
+        }
+
+        .subtitle {
+            margin: 5px 0 0 0;
+            font-size: 14px;
+            color: rgba(217, 70, 239, 0.8);
+            /* Lighter magenta */
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: bold;
         }
     </style>
     <!-- Import Map -->
@@ -50,6 +60,7 @@
 <body>
     <div id="ui">
         <h1>Neon Flight</h1>
+        <p class="subtitle">Passive Visual Demo • Sit back and enjoy the ride</p>
     </div>
     <script type="module">
         import * as THREE from 'three';
@@ -163,7 +174,7 @@
         });
         const sun = new THREE.Mesh(sunGeo, sunMat);
         sun.position.z = -100; // Far background
-        sun.position.y = 20;
+        sun.position.y = 15;
         scene.add(sun);
 
 

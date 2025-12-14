@@ -236,6 +236,120 @@
             pointer-events: none;
         }
 
+        /* Artificial Horizon */
+        .horizon-container {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 0 20px var(--primary);
+            background: rgba(0, 50, 100, 0.2);
+        }
+
+        .horizon-roll {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            animation: sim-roll 10s ease-in-out infinite;
+        }
+
+        .roll-ring {
+            position: absolute;
+            width: 90%;
+            height: 90%;
+            border: 1px dashed var(--secondary);
+            border-radius: 50%;
+            opacity: 0.5;
+        }
+
+        .pitch-ladder {
+            position: absolute;
+            width: 60%;
+            height: 200%;
+            /* Tall for movement */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            animation: sim-pitch 8s ease-in-out infinite alternate;
+        }
+
+        .pitch-line {
+            width: 100%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 20%, var(--primary) 20%, var(--primary) 80%, transparent 80%);
+            position: relative;
+            color: var(--primary);
+            font-size: 8px;
+            text-align: right;
+            line-height: 0;
+        }
+
+        .pitch-line::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 5px;
+            height: 5px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        .aircraft-marker {
+            position: absolute;
+            z-index: 10;
+        }
+
+        /* Flight Simulation Keyframes */
+        @keyframes sim-roll {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            25% {
+                transform: rotate(15deg);
+            }
+
+            50% {
+                transform: rotate(-10deg);
+            }
+
+            75% {
+                transform: rotate(5deg);
+            }
+
+            100% {
+                transform: rotate(0deg);
+            }
+        }
+
+        @keyframes sim-pitch {
+            0% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(30px);
+            }
+
+            /* Pitch Down */
+            100% {
+                transform: translateY(-30px);
+            }
+
+            /* Pitch Up */
+        }
+
         /* Scanline Overlay */
         .scanlines {
             position: fixed;
@@ -265,9 +379,32 @@
             <svg class="svg-overlay" viewBox="0 0 600 600">
                 <circle cx="300" cy="300" r="280" stroke-width="2" />
                 <circle cx="300" cy="300" r="240" stroke-width="5" stroke-dasharray="10 20" opacity="0.5" />
-                <circle cx="300" cy="300" r="180" stroke-width="1" stroke-dasharray="60 120" />
             </svg>
-            <div style="position: absolute; font-size: 12px; letter-spacing: 2px;">TARGET LOCKED</div>
+
+            <!-- Artificial Horizon System -->
+            <div class="horizon-container">
+                <!-- Rolling Component (Gyro) -->
+                <div class="horizon-roll">
+                    <!-- Pitch Ladder (Inner moving part) -->
+                    <div class="pitch-ladder">
+                        <div class="pitch-line">10</div>
+                        <div class="pitch-line">00</div>
+                        <div class="pitch-line">-10</div>
+                        <div class="pitch-line">-20</div>
+                    </div>
+                    <!-- Roll Ring (Static relative to Gyro, rotates relative to plane) -->
+                    <div class="roll-ring"></div>
+                </div>
+
+                <!-- Fixed Marker (The Aircraft) -->
+                <div class="aircraft-marker">
+                    <svg width="40" height="20" viewBox="0 0 40 20">
+                        <path d="M0 10 L15 10 L20 0 L25 10 L40 10" fill="none" stroke="#00f3ff" stroke-width="2" />
+                    </svg>
+                </div>
+            </div>
+
+            <div style="position: absolute; bottom: 20%; font-size: 10px; letter-spacing: 2px;">GYRO ACTIVE</div>
         </div>
 
         <!-- Left Panel -->

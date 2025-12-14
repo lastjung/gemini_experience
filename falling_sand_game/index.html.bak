@@ -15,21 +15,6 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            height: 100vh;
-            /* Full viewport height */
-        }
-
-        /* Container for Top Elements (Title + Toolbar) */
-        .controls-container {
-            flex: 0 0 auto;
-            /* Don't shrink/grow */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 100%;
-            padding-bottom: 10px;
-            background: #111;
-            z-index: 10;
         }
 
         h1 {
@@ -38,6 +23,20 @@
             text-transform: uppercase;
             letter-spacing: 2px;
             color: #aaa;
+        }
+
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            margin-bottom: 10px;
+            border: 2px solid #333;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            /* Critical for pixel art look */
+            cursor: crosshair;
         }
 
         #toolbar {
@@ -52,9 +51,9 @@
         }
 
         .tool {
-            width: 40px;
-            /* Slightly smaller for mobile */
-            height: 40px;
+            width: 50px;
+            /* Increased size */
+            height: 50px;
             border-radius: 50%;
             border: 2px solid #444;
             cursor: pointer;
@@ -63,11 +62,13 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            font-size: 9px;
+            font-size: 10px;
+            /* Small text */
             font-weight: bold;
             text-transform: uppercase;
             color: rgba(255, 255, 255, 0.9);
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+            /* readable on any color */
             user-select: none;
         }
 
@@ -108,38 +109,10 @@
             border: 2px solid #666;
         }
 
-        /* Main Canvas Area */
-        #game-area {
-            flex: 1 1 auto;
-            /* Grow to fill space */
-            position: relative;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            /* Center canvas in available space */
-            overflow: hidden;
-            padding: 5px;
-            box-sizing: border-box;
-        }
-
-        #canvas-frame {
-            position: relative;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-            border: 2px solid #333;
-            /* Max size logic handled by JS resize */
-        }
-
-        canvas {
-            display: block;
-            image-rendering: pixelated;
-            cursor: crosshair;
-        }
-
         #mini-guide {
             position: absolute;
-            top: 20px;
-            right: 20px;
+            top: 10px;
+            right: 10px;
             text-align: right;
             pointer-events: none;
             z-index: 10;
@@ -155,27 +128,24 @@
 </head>
 
 <body>
-    <div class="controls-container">
-        <h1>Falling Elements</h1>
-        <div id="toolbar">
-            <div class="tool active" data-type="sand" title="Sand">SAND</div>
-            <div class="tool" data-type="water" title="Water">WATER</div>
-            <div class="tool" data-type="stone" title="Stone">STONE</div>
-            <div class="tool" data-type="fire" title="Fire">FIRE</div>
-            <div class="tool" data-type="acid" title="Acid">ACID</div>
-            <div class="tool" data-type="eraser" title="Reset Game" style="border-radius: 10px;">RESET</div>
-        </div>
+    <h1>Falling Elements</h1>
+
+    <div id="toolbar">
+        <div class="tool active" data-type="sand" title="Sand">SAND</div>
+        <div class="tool" data-type="water" title="Water">WATER</div>
+        <div class="tool" data-type="stone" title="Stone">STONE</div>
+        <div class="tool" data-type="fire" title="Fire">FIRE</div>
+        <div class="tool" data-type="acid" title="Acid">ACID</div>
+        <div class="tool" data-type="eraser" title="Reset Game" style="border-radius: 10px;">RESET</div>
     </div>
 
-    <div id="game-area">
-        <div id="canvas-frame">
-            <canvas id="sandCanvas"></canvas>
-            <div id="mini-guide">
-                <div class="guide-item">Sand sinks in Water</div>
-                <div class="guide-item">Fire boils Water</div>
-                <div class="guide-item">Acid dissolves Stone</div>
-                <div class="guide-item">Stone falls & piles</div>
-            </div>
+    <div id="canvas-container">
+        <canvas id="sandCanvas"></canvas>
+        <div id="mini-guide">
+            <div class="guide-item">Sand sinks in Water</div>
+            <div class="guide-item">Fire boils Water</div>
+            <div class="guide-item">Acid dissolves Stone</div>
+            <div class="guide-item">Stone falls & piles</div>
         </div>
     </div>
 
@@ -183,86 +153,24 @@
         // --- Setup ---
         const canvas = document.getElementById('sandCanvas');
         const ctx = canvas.getContext('2d', { alpha: false }); // Optimization
-        const gameArea = document.getElementById('game-area');
 
-        // Simulation State
-        let width, height;
-        let scale = 3; // Initial guess, will be updated
-        let grid, gridNext; // We use single grid logic but declaring globally
-        let imageData, data;
+        // Simulation Resolution (Smaller than screen for pixel look & speed)
+        const width = 200;
+        const height = 200;
+        const scale = 3; // Visual scale
 
-        function initSim() {
-            // Calculate max available dimensions
-            const availW = gameArea.clientWidth;
-            const availH = gameArea.clientHeight;
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.width = (width * scale) + 'px';
+        canvas.style.height = (height * scale) + 'px';
 
-            // Target resolution (approx 200-300px wide)
-            // We want integer scaling if possible for crisp look, but filling space is priority
-            // Let's pick a fixed Logic Width and adjust Scale to fit
-
-            // Logic resolution
-            const LOGIC_W = 200;
-            // Calculate aspect ratio of container
-            const aspect = availW / availH;
-
-            // Logic Height based on aspect ratio
-            const LOGIC_H = Math.floor(LOGIC_W / aspect);
-
-            // Actually, better approach:
-            // Maximize Scale such that (LOGIC_W * Scale) <= availW
-            // But we want to fill the screen interactively. 
-            // Let's use a dynamic logic size with fixed scale? 
-            // Or Fixed logic size with dynamic scale?
-            // "Screen height is different" -> user wants to see the floor.
-
-            // Solution: Fit Logic Height to Available Height.
-            // Let's safely assume a scale of 3 or 4 on desktop.
-
-            // Heuristic:
-            scale = Math.floor(Math.min(availW, availH) / 100);
-            if (scale < 1) scale = 1;
-            if (scale > 4) scale = 4;
-
-            // Calculate logical dimensions to fill the container perfectly with this scale
-            width = Math.floor(availW / scale);
-            height = Math.floor(availH / scale);
-
-            // Set Canvas Size
-            canvas.width = width;
-            canvas.height = height;
-            canvas.style.width = (width * scale) + 'px';
-            canvas.style.height = (height * scale) + 'px';
-
-            // Init Grid
-            grid = new Uint8Array(width * height);
-
-            // Init Image Data
-            imageData = ctx.createImageData(width, height);
-            data = imageData.data;
-        }
-
-        // Init on load
-        initSim();
-
-        // Handle Resize (Debounced)
-        let resizeTimeout;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                // Determine if we strictly need to re-init (destroys sand)
-                // or just scale CSS? 
-                // For this request, correct Layout > Persisting Sand.
-                // Re-init to fit new window size correctly.
-                initSim();
-
-                // Clear grid on resize to prevent array OOB or weird artifacts
-                // (Already done by new Uint8Array)
-            }, 100);
-        });
-
-        // Loop handles logic.
-        // We need to re-assign grid to global or closure? 
-        // Variables width, height, grid are global scope here.
+        // --- Data ---
+        // 1D array for better cache locality (though JS is high level, it helps logic)
+        // grid[i] = typeId
+        let grid = new Uint8Array(width * height);
+        // Secondary grid for simultaneous updates (technically sequential but avoids some artifacts)
+        // Actually for falling sand, usually updating strictly bottom-up in one grid is fine and faster.
+        // We will stick to single grid with careful iteration direction.
 
         // Element IDs
         const EMPTY = 0;
@@ -285,6 +193,10 @@
             [STEAM]: [220, 221, 225],
             [SMOKE]: [50, 50, 50]
         };
+
+        // --- Image Data Buffer for Rendering ---
+        const imageData = ctx.createImageData(width, height);
+        const data = imageData.data; // Reference to the underlying buffer
 
         // --- Logic ---
         let currentType = SAND;

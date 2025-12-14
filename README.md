@@ -13,7 +13,7 @@ To experience the full suite of projects:
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-username/gemini_experience.git
+    git clone https://github.com/lastjung/gemini_experience.git
     cd gemini_experience
     ```
 

@@ -135,10 +135,10 @@
             sensorDist: 30,
             turnSpeed: 0.5,
             moveSpeed: 2,
-            evaporationRate: 0.99, // Very slow decay
-            pheromoneStrength: 255, // Max strength instantly
-            foodPheromoneColor: [255, 0, 100], // Magenta/Reddish for food trail
-            homePheromoneColor: [0, 100, 255]  // Blueish for home trail (optional)
+            evaporationRate: 0.95, // Faster decay (was 0.99)
+            pheromoneStrength: 180, // Reduced from 255 to prevent instant saturation
+            foodPheromoneColor: [255, 0, 100],
+            homePheromoneColor: [0, 100, 255]
         };
 
         // State
@@ -147,6 +147,7 @@
         let ants = [];
         let pheromones = null;
         let traceData = null; // Image Data
+        let lastTime = 0; // For delta time calculation
         const INITIAL_FOOD = 5000;
         let foods = [];
         let foodCount = 2; // Default 2 foods
@@ -349,7 +350,7 @@
         // Image Data for Pheromone rendering
         // traceData initialized in resize() function
 
-        function drawPheromones() {
+        function drawPheromones(adjustedEvaporation) {
             // Decay & Render
             // Accessing pixel data is slow if we do it poorly.
             // We use pheromones Float32Array for physics, then put that into ImageData 
@@ -360,14 +361,15 @@
 
             const pData = traceData.data;
             const len = pheromones.length;
+            const decay = adjustedEvaporation || config.evaporationRate;
 
             for (let i = 0; i < len; i++) {
                 if (pheromones[i] > 0.1) { // Lower threshold to show faint trails
-                    pheromones[i] *= config.evaporationRate;
+                    pheromones[i] *= decay;
 
                     // Boost visual intensity significantly
                     const val = pheromones[i];
-                    const intensity = Math.min(255, val * 3.0);
+                    const intensity = Math.min(255, val * 1.5);
 
                     const idx = i * 4;
                     pData[idx] = 255;      // R
@@ -376,21 +378,34 @@
                     pData[idx + 3] = intensity;
                 } else {
                     pheromones[i] = 0;
-                    // Clear pixel
-                    pData[i * 4 + 3] = 0;
+                    // Explicitly draw background color (Dark Gray #111) to avoid transparency issues
+                    const idx = i * 4;
+                    pData[idx] = 17;     // 0x11
+                    pData[idx + 1] = 17; // 0x11
+                    pData[idx + 2] = 17; // 0x11
+                    pData[idx + 3] = 255; // Opaque
                 }
             }
             ctx.putImageData(traceData, 0, 0);
         }
 
-        function loop() {
+        function loop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const dt = (timestamp - lastTime) || 16.666;
+            lastTime = timestamp;
+
+            // Normalize to 60fps (approx 16.6 ms)
+            // If dt is 33ms (30fps), ratio is 2.0. Decay should be pow(rate, 2).
+            const ratio = dt / 16.666;
+            const adjustedEvaporation = Math.pow(config.evaporationRate, ratio);
+
             // Clear background
             ctx.fillStyle = '#111';
             ctx.fillRect(0, 0, width, height);
 
             // 1. Update & Draw Pheromones
             // We draw pheromones first so they are under ants
-            drawPheromones();
+            drawPheromones(adjustedEvaporation);
 
             // 2. Draw Home
             ctx.beginPath();

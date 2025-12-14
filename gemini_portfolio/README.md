@@ -60,5 +60,14 @@ This project is built as a static web application and requires no complex build 
 *   `implementation_results.md`: A log of the latest features and optimizations implemented.
 *   `implementation_plan.md`: The original development plan and goals.
 
+## ✨ Recent Visual Enhancements (v2.0)
+
+*   **Cyberpunk Globe**: Upgraded with a "Geodesic Shield" shader, rotating orbital rings, and neon green scanning beams.
+*   **Sci-Fi HUD**: Center area activated with a simulated **Artificial Horizon (Gyro)** including roll/pitch animations.
+*   **Matrix Rain 3D**: Optimized with variable speed drops and reduced density for a more dynamic and cleaner look.
+*   **Kaleidoscope Shader**: Added "Psychedelic Lens" title and instructions with high-contrast UI overlay.
+*   **Rusty Chain**: Layout optimizations for better responsiveness and "smashable" box sizing.
+
 ---
+
 *Created by Gemini 3.0 Pro & Antigravity*

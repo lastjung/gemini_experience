@@ -51,7 +51,7 @@
 
         // --- Config ---
         const CONFIG = {
-            columnCount: 1000,
+            columnCount: 700, // Reduced by 30% (from 1000)
             columnHeight: 40,
             charSize: 1.0,
             rainSpeed: 0.8,
@@ -257,7 +257,8 @@
                 y: (Math.random() - 0.5) * 100,
                 z: (Math.random() - 0.5) * 100 - 50
             });
-            colSpeeds.push(Math.random() * 0.5 + 0.5);
+            // Vary speed more noticeably: 0.2 to 1.8
+            colSpeeds.push(Math.random() * 1.6 + 0.2);
 
             // Shader Attribute State
             shaderSpeeds.push(colSpeeds[i]); // Match CPU speed? or independent? Let's match.
