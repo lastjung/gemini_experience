@@ -68,6 +68,15 @@ This project is built as a static web application and requires no complex build 
 *   **Kaleidoscope Shader**: Added "Psychedelic Lens" title and instructions with high-contrast UI overlay.
 *   **Rusty Chain**: Layout optimizations for better responsiveness and "smashable" box sizing.
 
+## 📱 Mobile Optimization (v2.1)
+*   **Responsive Landing Page**: The main portfolio page now adapts seamlessly to mobile devices (< 768px).
+*   **Touch-Friendly UI**: Project cards automatically reveal details without hover interactions.
+*   **Optimized Navigation**: Projects open in a new tab on mobile to prevent modal/scrolling conflicts.
+*   **Performance**: Reduced particle count and adjusted camera field-of-view for a balanced visual experience on smaller screens.
+
+> [!NOTE]
+> **Browser Compatibility**: For the best experience, we strongly recommend using **Google Chrome**. Some advanced WebGL features (especially in modal views) may conflict with resource limits in Safari.
+
 ---
 
 *Created by Gemini 3.0 Pro & Antigravity*

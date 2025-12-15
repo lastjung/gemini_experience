@@ -130,6 +130,24 @@
             margin-top: 1.5rem;
             /* Increased spacing to fill vertical gap */
         }
+
+        /* Mobile Optimization: Always reveal content on touch devices */
+        @media (max-width: 768px),
+        (hover: none) {
+            .slide-content {
+                transform: translateY(0) !important;
+            }
+
+            .reveal-content {
+                max-height: 24rem !important;
+                opacity: 1 !important;
+                margin-top: 1.5rem !important;
+            }
+
+            .glass-card {
+                padding: 1.5rem !important;
+            }
+        }
     </style>
 </head>
 
@@ -138,12 +156,14 @@
 
     <!-- Header -->
     <header
-        class="fixed top-0 w-full z-40 p-6 flex justify-between items-center mix-blend-difference pointer-events-none">
-        <div class="text-2xl font-tech font-bold tracking-widest text-neonCyan pointer-events-auto">
+        class="fixed top-0 w-full z-40 p-4 md:p-6 flex justify-center md:justify-between items-center mix-blend-difference pointer-events-none">
+        <div
+            class="text-xl md:text-2xl font-tech font-bold tracking-widest text-neonCyan pointer-events-auto text-center md:text-left">
             GEMINI<span class="text-white">3.0</span>
-            <span class="text-xs text-neonPurple ml-2 tracking-normal font-sans">with Antigravity</span>
+            <span class="block md:inline text-[10px] md:text-xs text-neonPurple md:ml-2 tracking-normal font-sans">with
+                Antigravity</span>
         </div>
-        <div class="text-sm font-light text-gray-400">DEVELOPER PORTFOLIO</div>
+        <div class="hidden md:block text-sm font-light text-gray-400">DEVELOPER PORTFOLIO</div>
     </header>
 
     <!-- Main Content -->
@@ -324,6 +344,12 @@
         let isModalOpen = false;
 
         function openModal(project) {
+            // Mobile Optimization: Open in new tab instead of modal
+            if (window.innerWidth < 768) {
+                window.open(project.path, '_blank');
+                return;
+            }
+
             if (isModalOpen) return;
             isModalOpen = true;
 
@@ -391,8 +417,10 @@
             const scene = new THREE.Scene();
             scene.fog = new THREE.FogExp2(0x050510, 0.001);
 
+            const isMobile = window.innerWidth < 768;
             const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-            camera.position.z = 100;
+            // Mobile Optimization: Move camera back to see more of the scene (Sun/Planets)
+            camera.position.z = isMobile ? 250 : 100;
 
             const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: false, antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -415,7 +443,8 @@
 
             // 1. Stars (Soft Circles)
             const starGeo = new THREE.BufferGeometry();
-            const starCount = 3000;
+            // Optimization: Reduce stars on mobile for performance
+            const starCount = isMobile ? 1000 : 3000;
             const starPos = new Float32Array(starCount * 3);
             for (let i = 0; i < starCount * 3; i++) {
                 starPos[i] = (Math.random() - 0.5) * 1500;
@@ -571,10 +600,17 @@
 
             // Animation Loop
             let mouseX = 0, mouseY = 0;
-            window.addEventListener('mousemove', e => {
-                mouseX = (e.clientX - window.innerWidth / 2) * 0.05;
-                mouseY = (e.clientY - window.innerHeight / 2) * 0.05;
-            });
+            const handleInput = (x, y) => {
+                mouseX = (x - window.innerWidth / 2) * 0.05;
+                mouseY = (y - window.innerHeight / 2) * 0.05;
+            };
+
+            window.addEventListener('mousemove', e => handleInput(e.clientX, e.clientY));
+            window.addEventListener('touchmove', e => {
+                if (e.touches.length > 0) {
+                    handleInput(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
 
             const animate = () => {
                 requestAnimationFrame(animate);
@@ -604,6 +640,10 @@
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
+
+                // Update Camera Z for Responsive Background
+                const isMobileNow = window.innerWidth < 768;
+                camera.position.z = isMobileNow ? 250 : 100;
             });
         };
 

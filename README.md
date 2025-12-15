@@ -65,6 +65,12 @@ This repository contains **18+ unique web experiments**. Below is a summary of e
 *   **[Ant Colony](./ant_colony/index.html)**: Swarm intelligence simulation where 1,200 agents find shortest paths via pheromone trails.
 *   **[MCP Landing](./mcp_landing/index.html)**: Educational page for the Model Context Protocol with interactive diagrams.
 
+## 📱 Mobile Optimization (v2.1)
+*   **Responsive Landing Page**: The main portfolio page now adapts seamlessly to mobile devices (< 768px).
+*   **Touch-Friendly UI**: Project cards automatically reveal details without hover interactions.
+*   **Optimized Navigation**: Projects open in a new tab on mobile to prevent modal/scrolling conflicts.
+*   **Performance**: Reduced particle count and adjusted camera field-of-view for a balanced visual experience on smaller screens.
+
 ## 🛠️ Technology Stack
 
 This project relies on standard web technologies without heavy build steps (No Bundlers required for most projects). **Most experiments are implemented as self-contained single-file HTML documents** (embedding CSS/JS) for simplicity and portability.
