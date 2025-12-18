@@ -7,17 +7,13 @@ Welcome to **Gemini Experience**, a curated collection of high-performance web e
 
 The project features a central **3D Space Portfolio** (`gemini_portfolio`) that acts as an immersive hub to explore all the other experiments.
 
+## 🌐 Live Demo
+
+You can view the live project at: **[https://lastjung.github.io/gemini_experience/](https://lastjung.github.io/gemini_experience/)**
+
 ## 🚀 Quick Start
 
-To experience the full suite of projects:
-
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/lastjung/gemini_experience.git
-    cd gemini_experience
-    ```
-
-2.  **Run a local server**:
+To experience the full suite of projects locally:
     Because many projects use advanced browser features (ES modules, textures, Web Workers), they require a local server to avoid CORS issues.
     *   **VS Code**: Right-click `gemini_portfolio/index.html` and select "Open with Live Server".
     *   **Python**:

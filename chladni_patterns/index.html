@@ -106,6 +106,82 @@
             padding: 10px;
             border-radius: 8px;
         }
+
+
+        /* New Collapsible Styles */
+        #controls {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            max-height: 500px;
+            /* Arbitrary large height */
+            overflow: hidden;
+        }
+
+        #controls.collapsed {
+            max-height: 60px;
+            /* Only show header */
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: default;
+            /* Default cursor for desktop */
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            margin: 0;
+            /* Removing bottom margin to align with row */
+            pointer-events: none;
+            /* Let the row handle click */
+        }
+
+        #toggle-icon {
+            display: none;
+            /* Hide by default */
+            color: #0ff;
+            transition: transform 0.3s;
+        }
+
+        #controls.collapsed #toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        #controls-content {
+            opacity: 1;
+            transition: opacity 0.3s;
+        }
+
+        #controls.collapsed #controls-content {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Mobile Adjustments */
+        @media (max-width: 768px) {
+            #toggle-icon {
+                display: block;
+                /* Show on mobile */
+            }
+
+            .header-row {
+                cursor: pointer;
+                /* Pointer on mobile */
+            }
+
+            #controls {
+                width: auto;
+                max-width: 340px;
+                /* Limit width */
+                left: 20px;
+                right: auto;
+                /* Don't stretch */
+                padding: 15px;
+            }
+        }
     </style>
 </head>
 
@@ -115,23 +191,33 @@
     </div>
 
     <div id="controls">
-        <h1>Chladni Resonance</h1>
-        <div class="label">
-            Frequency (Hz)
-            <span id="freq-display">5.00</span>
-        </div>
-        <input type="range" id="freqSlider" min="2" max="20" step="0.05" value="5">
-
-        <div class="label" style="margin-top:15px">Plate Shape</div>
-        <div style="display: flex; gap: 10px;">
-            <button onclick="setShape('square')" id="btn-square" style="background:rgba(0,255,255,0.3)">Square</button>
-            <button onclick="setShape('circle')" id="btn-circle">Circle</button>
+        <div class="header-row" onclick="toggleControls()">
+            <h1>Chladni Resonance</h1>
+            <svg id="toggle-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <path d="M18 15l-6-6-6 6" />
+            </svg>
         </div>
 
-        <div class="description">
-            <strong>How it works:</strong><br>
-            The metal plate vibrates at the set frequency.
-            Sand settles at Nodes (still areas).
+        <div id="controls-content">
+            <div class="label">
+                Frequency (Hz)
+                <span id="freq-display">5.00</span>
+            </div>
+            <input type="range" id="freqSlider" min="2" max="20" step="0.05" value="5">
+
+            <div class="label" style="margin-top:15px">Plate Shape</div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="setShape('square')" id="btn-square"
+                    style="background:rgba(0,255,255,0.3)">Square</button>
+                <button onclick="setShape('circle')" id="btn-circle">Circle</button>
+            </div>
+
+            <div class="description">
+                <strong>How it works:</strong><br>
+                The metal plate vibrates at the set frequency.
+                Sand settles at Nodes (still areas).
+            </div>
         </div>
     </div>
 
@@ -142,6 +228,19 @@
         const display = document.getElementById('freq-display');
         const btnSquare = document.getElementById('btn-square');
         const btnCircle = document.getElementById('btn-circle');
+        const controls = document.getElementById('controls');
+
+        // Toggle Logic
+        function toggleControls() {
+            // Desktop safety check (though CSS handles UI)
+            if (window.innerWidth >= 768) return;
+            controls.classList.toggle('collapsed');
+        }
+
+        // Auto-collapse on mobile
+        if (window.innerWidth < 768) {
+            controls.classList.add('collapsed');
+        }
 
         // Sync inputs
         slider.addEventListener('input', () => {

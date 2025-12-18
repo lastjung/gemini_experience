@@ -362,6 +362,46 @@
             pointer-events: none;
             z-index: 999;
         }
+
+        /* --- Mobile Responsive Fixes --- */
+        @media (max-width: 768px) {
+
+            /* Scale down the massive center ring */
+            .center-ring-group {
+                transform: scale(0.55) !important;
+            }
+
+            /* Stack Panels Vertically */
+            .panel {
+                width: 85% !important;
+                left: 50% !important;
+                right: auto !important;
+                transform: translateX(-50%) !important;
+                /* Remove 3D skew for better readability on mobile */
+                text-align: center;
+                background: rgba(0, 10, 20, 0.85);
+                /* Darker background for readability */
+            }
+
+            .panel-left {
+                top: 5% !important;
+                /* Move to top */
+            }
+
+            .panel-right {
+                top: auto !important;
+                bottom: 10% !important;
+                /* Move to bottom */
+            }
+
+            /* Adjust Alert Position */
+            .alert-box {
+                top: 40% !important;
+                width: 90%;
+                font-size: 18px;
+                padding: 15px;
+            }
+        }
     </style>
 </head>
 

@@ -2,6 +2,10 @@
 
 Welcome to the **Gemini 3.0 Developer Portfolio**, a cutting-edge immersive web experience designed to showcase interactive web experiments and creative coding projects. This portfolio features a completely generative 3D space environment, diverse physics simulations, and a cinematic UI, all built with modern web technologies.
 
+## 🌐 Live Demo
+
+You can view the live project at: **[https://lastjung.github.io/gemini_experience/](https://lastjung.github.io/gemini_experience/)**
+
 ## 🌟 Features
 
 *   **Immersive 3D Environment**: A fully procedurally generated space scene using **Three.js**, complete with:
