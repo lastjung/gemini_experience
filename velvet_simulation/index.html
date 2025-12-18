@@ -21,7 +21,8 @@
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: #ff4d4d;
+            color: #87CEEB;
+            /* Sky Blue */
             font-family: 'Helvetica', sans-serif;
             pointer-events: none;
             text-align: center;
@@ -34,7 +35,30 @@
         #instructions button,
         #instructions label {
             pointer-events: auto;
-            /* Enable interaction */
+        }
+
+        /* Hue Slider Visibility Fix */
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 150px;
+            background: rgba(255, 255, 255, 0.1);
+            height: 4px;
+            border-radius: 2px;
+            outline: none;
+            border: 1px solid rgba(135, 206, 235, 0.3);
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            background: #87CEEB;
+            /* Sky Blue Thumb */
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(135, 206, 235, 0.5);
         }
     </style>
 </head>
@@ -42,12 +66,12 @@
 <body>
     <div id="instructions">
         <h2>Velvet Cloth</h2>
-        <p>Drag to Tear • Right Click to Cut</p>
+        <p>Drag to Tear • Shift + Drag to Cut</p>
         <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; align-items: center;">
             <label style="font-size: 12px;">Hue:</label>
-            <input type="range" id="hueSlider" min="0" max="360" value="0" style="cursor: pointer;">
+            <input type="range" id="hueSlider" min="0" max="360" value="145" style="cursor: pointer;">
             <button id="resetBtn"
-                style="background:none; border: 1px solid #ff4d4d; color: #ff4d4d; padding: 5px 10px; cursor: pointer; font-family: inherit;">Reset</button>
+                style="background:none; border: 1px solid #87CEEB; color: #87CEEB; padding: 5px 10px; cursor: pointer; font-family: inherit; border-radius: 4px; transition: all 0.2s;">Reset</button>
         </div>
         <input type="color" id="colorPicker" value="#8a1c1c" style="display:none;">
         <!-- Hidden, using Hue slider instead for 'slider' request -->
@@ -61,7 +85,7 @@
         const resetBtn = document.getElementById('resetBtn');
 
         let width, height;
-        let clothColor = 'hsl(0, 80%, 33%)'; // Initial Dark Red
+        let clothColor = 'hsl(145, 80%, 33%)'; // Initial Green
 
         hueSlider.addEventListener('input', (e) => {
             // Keep saturation and lightness fixed for velvet look, just change Hue
@@ -73,21 +97,21 @@
             init();
         });
 
-        // Configuration
-        const physicsAccuracy = 5;
-        const mouseInfluence = 50;
-        const tearDistance = 60;
+        // Configuration (Base)
+        const physicsAccuracy = window.innerWidth < 768 ? 2 : 4; // Reduced for performance
+        const mouseInfluence = 40; // Halved for more precision
+        const tearDistance = 150; // Toughened fabric (harder to rip)
         const gravity = 1200;
-        const clothY = 180; // Lowered further to avoid UI overlap
-        const spacing = 12;
-        const widthPoints = 60;
-        const heightPoints = 35;
+        const clothY = 160;
+        let spacing = 12;
+        let widthPoints = 60;
+        let heightPoints = 40;
         const windStrength = 15;
 
         // State
         const points = [];
         const constraints = [];
-        let mouse = { x: 0, y: 0, down: false, button: 0, draggedPoint: null };
+        let mouse = { x: 0, y: 0, down: false, button: 0, shiftKey: false, draggedPoints: [] };
 
         // --- Vector Helper ---
         class Point {
@@ -102,12 +126,13 @@
             update(delta) {
                 if (this.pinned) return;
 
-                // If being dragged, lock to mouse (but allow tearing via constraints later)
-                if (mouse.draggedPoint === this) {
-                    this.oldx = this.x; // Track velocity
+                // If being dragged, stay attached to mouse with original offset
+                const dragged = mouse.draggedPoints.find(dp => dp.point === this);
+                if (dragged) {
+                    this.oldx = this.x;
                     this.oldy = this.y;
-                    this.x = mouse.x;
-                    this.y = mouse.y;
+                    this.x = mouse.x + dragged.offsetX;
+                    this.y = mouse.y + dragged.offsetY;
                     return;
                 }
 
@@ -173,9 +198,7 @@
             }
 
             draw() {
-                if (!this.p1 || !this.p2) return;
-                ctx.moveTo(this.p1.x, this.p1.y);
-                ctx.lineTo(this.p2.x, this.p2.y);
+                // Constraint drawing is now handled in batches in the main loop
             }
         }
 
@@ -183,6 +206,13 @@
         function init() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
+
+            // Responsive Scaling
+            spacing = width < 768 ? 8 : 10; // Denser on mobile
+            const targetWidth = width < 768 ? width * 0.85 : 700; // 85% width on mobile
+            widthPoints = Math.floor(targetWidth / spacing);
+            // Height: fill about 70-80% of screen height
+            heightPoints = width < 768 ? Math.floor((height * 0.7) / spacing) : 45;
 
             points.length = 0;
             constraints.length = 0;
@@ -194,7 +224,7 @@
                 for (let x = 0; x < widthPoints; x++) {
                     const p = new Point(startX + x * spacing, clothY + y * spacing);
                     // Pin the top row
-                    if (y === 0 && x % 1 === 0) { // Pin every point on top row
+                    if (y === 0) {
                         p.pinned = true;
                     }
                     points.push(p);
@@ -205,54 +235,78 @@
             for (let y = 0; y < heightPoints; y++) {
                 for (let x = 0; x < widthPoints; x++) {
                     if (x < widthPoints - 1) {
-                        constraints.push(new Constraint(points[y * widthPoints + x], points[y * widthPoints + x + 1]));
+                        const c = new Constraint(points[y * widthPoints + x], points[y * widthPoints + x + 1]);
+                        c.spacing = spacing;
+                        constraints.push(c);
                     }
                     if (y < heightPoints - 1) {
-                        constraints.push(new Constraint(points[y * widthPoints + x], points[(y + 1) * widthPoints + x]));
+                        const c = new Constraint(points[y * widthPoints + x], points[(y + 1) * widthPoints + x]);
+                        c.spacing = spacing;
+                        constraints.push(c);
                     }
                 }
             }
         }
 
         // --- Interaction Logic ---
-        function handleStart(x, y, button) {
+        function handleStart(x, y, button, shift) {
             mouse.down = true;
             mouse.x = x;
             mouse.y = y;
             mouse.button = button;
+            mouse.shiftKey = shift;
 
-            if (button === 2) return; // Right click is for cutting, handled in updates
+            if (button === 2 || shift) return; // Right click or Shift is for cutting
 
-            // Find nearest point to grab
-            let nearest = null;
-            let minDist = mouseInfluence;
-
+            // Grab all points within influence radius
+            mouse.draggedPoints = [];
             for (let p of points) {
                 const dx = x - p.x;
                 const dy = y - p.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < minDist) {
-                    minDist = dist;
-                    nearest = p;
+                if (dist < mouseInfluence) {
+                    mouse.draggedPoints.push({
+                        point: p,
+                        offsetX: p.x - x,
+                        offsetY: p.y - y
+                    });
                 }
             }
-
-            mouse.draggedPoint = nearest;
         }
 
-        function handleMove(x, y) {
+        function handleMove(x, y, shift) {
             mouse.x = x;
             mouse.y = y;
+            mouse.shiftKey = shift;
         }
 
         function handleEnd() {
             mouse.down = false;
-            mouse.draggedPoint = null;
+            mouse.draggedPoints = [];
         }
 
         function updateInteraction() {
-            // Cut logic (Right Click)
-            if (mouse.down && mouse.button === 2) {
+            // 1. Magnetic Hover Force (Feels great on Trackpads/Mobile)
+            // Even without clicking, the cloth ripples as you move near it
+            const hoverRadius = 80;
+            const hoverStrength = 0.3;
+
+            for (let p of points) {
+                if (p.pinned) continue;
+                const dx = mouse.x - p.x;
+                const dy = mouse.y - p.y;
+                const distSq = dx * dx + dy * dy;
+                if (distSq < hoverRadius * hoverRadius) {
+                    const dist = Math.sqrt(distSq);
+                    const force = (1 - dist / hoverRadius) * hoverStrength;
+                    // Apply a gentle push away/pull based on movement
+                    p.x -= dx * force * 0.1;
+                    p.y -= dy * force * 0.1;
+                }
+            }
+
+            // 2. Cut logic (Right Click OR Shift + Drag)
+            if (mouse.down && (mouse.button === 2 || mouse.shiftKey)) {
                 for (let c of constraints) {
                     if (!c.p1) continue;
                     const midX = (c.p1.x + c.p2.x) / 2;
@@ -283,27 +337,53 @@
         function draw() {
             ctx.clearRect(0, 0, width, height);
 
-            ctx.beginPath();
-            ctx.strokeStyle = clothColor;
-            ctx.lineWidth = 1;
+            // 1. Prepare Color Bins for Batch Rendering (HUGE performance boost)
+            const baseHue = parseInt(hueSlider.value);
+            const numBins = 6;
+            const bins = Array.from({ length: numBins }, () => []);
 
-            // Batch drawing
             for (let i = 0; i < constraints.length; i++) {
-                constraints[i].draw();
-            }
-            ctx.stroke();
+                const c = constraints[i];
+                if (!c.p1 || !c.p2) continue;
 
-            // Draw points (optional, for velvet texture look maybe?)
-            // A subtle glow?
+                // Fast tension calc
+                const dx = c.p1.x - c.p2.x;
+                const dy = c.p1.y - c.p2.y;
+                const distSq = dx * dx + dy * dy;
+                const baseSq = c.spacing * c.spacing;
+
+                // Tension bin (0 to numBins-1)
+                let binIdx = Math.floor((distSq - baseSq) / 100);
+                binIdx = Math.max(0, Math.min(binIdx, numBins - 1));
+                bins[binIdx].push(c);
+            }
+
+            // 2. Render each bin in one stroke call
+            ctx.lineWidth = 1;
+            for (let b = 0; b < numBins; b++) {
+                if (bins[b].length === 0) continue;
+
+                const lightness = 33 + (b * (40 / (numBins - 1)));
+                ctx.strokeStyle = `hsl(${baseHue}, 80%, ${lightness}%)`;
+
+                ctx.beginPath();
+                for (let c of bins[b]) {
+                    ctx.moveTo(c.p1.x, c.p1.y);
+                    ctx.lineTo(c.p2.x, c.p2.y);
+                }
+                ctx.stroke();
+            }
 
             // Draw Interaction Cursor
             if (mouse.down) {
                 ctx.beginPath();
                 ctx.arc(mouse.x, mouse.y, mouseInfluence, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.fillStyle = 'rgba(135, 206, 235, 0.1)';
                 ctx.fill();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.strokeStyle = mouse.shiftKey ? 'rgba(255, 255, 255, 0.8)' : 'rgba(135, 206, 235, 0.4)';
+                ctx.setLineDash([5, 5]);
                 ctx.stroke();
+                ctx.setLineDash([]);
             }
         }
 
@@ -323,10 +403,14 @@
         window.addEventListener('resize', init);
 
         // Mouse Events
-        canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY, e.button));
-        canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+        canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY, e.button, e.shiftKey));
+        canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY, e.shiftKey));
         canvas.addEventListener('mouseup', handleEnd);
         canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        // Key Events (Update shift status even if mouse doesn't move)
+        window.addEventListener('keydown', e => { if (e.key === 'Shift') mouse.shiftKey = true; });
+        window.addEventListener('keyup', e => { if (e.key === 'Shift') mouse.shiftKey = false; });
 
         // Touch Events (for Pads/Tablets/Mobiles)
         canvas.addEventListener('touchstart', e => {

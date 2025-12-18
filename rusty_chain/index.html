@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Rusty Chain Simulation</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
@@ -12,239 +12,472 @@
             padding: 0;
             overflow: hidden;
             background: #222;
-            font-family: sans-serif;
+            /* Dark, rusty background */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         #canvas-container {
             width: 100vw;
             height: 100vh;
+            display: block;
         }
 
-        #overlay {
+        #ui-layer {
             position: absolute;
             top: 20px;
             left: 20px;
-            color: #ccc;
-            pointer-events: none;
-            text-shadow: 1px 1px 2px #000;
+            /* Left aligned */
+            padding: 15px;
+            /* Transparent Background as requested */
+            background: rgba(0, 0, 0, 0);
+            border: none;
+            z-index: 1000;
+            width: 220px;
+            color: #eceff1;
+            /* Force Light Text Color */
         }
 
         h1 {
-            margin: 0;
-            font-size: 1.5rem;
-            color: #eebb99;
+            margin: 0 0 5px 0;
+            font-size: 20px;
+            color: #eceff1;
+            /* Force Light Text Color */
         }
 
         p {
-            margin: 5px 0;
-            font-size: 0.9rem;
+            margin: 0 0 15px 0;
+            font-size: 14px;
+            color: #cfd8dc;
+            /* Slightly dimmer white */
+        }
+
+        button {
+            pointer-events: auto;
+            background: #8d6e63;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        button:hover {
+            background: #a1887f;
+        }
+
+        button:active {
+            transform: translateY(1px);
         }
     </style>
 </head>
 
 <body>
-    <div id="overlay">
-        <h1>Rusty Chain & Boxes</h1>
-        <p>Drag the chain to smash the boxes.</p>
-        <button onclick="resetScene()">Reset Box Stack</button>
-    </div>
-    <div id="canvas-container"></div>
-    <style>
-        button {
-            margin-top: 10px;
-            padding: 8px 16px;
-            background: #eebb99;
-            color: #222;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            cursor: pointer;
-            pointer-events: auto;
-        }
 
-        button:hover {
-            background: #dcb090;
-        }
-    </style>
+    <div id="ui-layer">
+        <h1>Rusty Chain</h1>
+        <p>Drag the chain. Smash the boxes.</p>
+        <button onclick="simulation.reset()">Reset Scene</button>
+        <div class="slider-container" style="margin-top: 15px;">
+            <label for="frictionSlider"
+                style="color: #efebe9; font-family: 'Courier New', monospace; font-size: 14px;">Friction: <span
+                    id="frictionVal">0.9</span></label>
+            <input type="range" id="frictionSlider" min="0.1" max="1.0" step="0.1" value="0.9"
+                style="width: 100%; margin-top: 5px;">
+        </div>
+        <div class="slider-container" style="margin-top: 10px;">
+            <label for="restitutionSlider" style="font-family: 'Courier New', monospace; font-size: 14px;">Elasticity:
+                <span id="restitutionVal">0.0</span></label>
+            <input type="range" id="restitutionSlider" min="0.0" max="1.0" step="0.1" value="0.0"
+                style="width: 100%; margin-top: 5px;">
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
 
     <script>
-        // Module aliases
-        const Engine = Matter.Engine,
-            Render = Matter.Render,
-            Runner = Matter.Runner,
-            Body = Matter.Body,
-            Bodies = Matter.Bodies,
-            Composite = Matter.Composite,
-            Composites = Matter.Composites,
-            Constraint = Matter.Constraint,
-            MouseConstraint = Matter.MouseConstraint,
-            Mouse = Matter.Mouse,
-            Events = Matter.Events;
+        // --- Rusty Chain Simulation V2 (Unified Architecture) ---
 
-        // Create engine
-        const engine = Engine.create();
-        const world = engine.world;
+        const Simulation = function () {
+            // Module Aliases
+            const Engine = Matter.Engine,
+                Render = Matter.Render,
+                Runner = Matter.Runner,
+                Composite = Matter.Composite,
+                Composites = Matter.Composites,
+                Common = Matter.Common,
+                MouseConstraint = Matter.MouseConstraint,
+                Mouse = Matter.Mouse,
+                World = Matter.World,
+                Bodies = Matter.Bodies,
+                Body = Matter.Body,
+                Sleeping = Matter.Sleeping, // Added Sleeping module
+                Events = Matter.Events,     // Added Events module 
+                Constraint = Matter.Constraint;
 
-        // Create renderer
-        const render = Render.create({
-            element: document.getElementById('canvas-container'),
-            engine: engine,
-            options: {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                background: '#1a1a1a',
-                wireframes: false, // Solid shapes
-                showAngleIndicator: false
-            }
-        });
+            // Core Objects
+            let engine, render, runner;
+            let mouseConstraint; // Defined at module level to persist across resets
+            let width, height;
+            let isMobile;
 
-        Render.run(render);
-        const runner = Runner.create();
-        Runner.run(runner, engine);
+            // CONFIGURATION
+            const COLORS = {
+                background: '#1a1a1a',             // Dark industrial background
+                wall: '#3e2723',                   // Dark wood/rust color
+                chainInfo: { fill: '#8d6e63', stroke: '#5d4037' }, // Rusty metal
+                ball: { fill: '#5d4037', stroke: '#3e2723' },     // Heavy iron
+                box: { fill: '#d7ccc8', stroke: '#a1887f' }       // Old wood
+            };
 
-        // --- SCENE SETUP ---
+            const PHYSICS = {
+                chainDensity: 0.1,    // Heavy for momentum
+                ballDensity: 0.2,     // Very heavy impact
+                boxDensity: 0.005,    // Light, breakable
+                wallFriction: 1.0     // Grip
+            };
 
-        // 1. Walls & Ground
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const wallOptions = {
-            isStatic: true,
-            render: { fillStyle: '#333' },
-            friction: 1.0
-        };
+            // Init Function - The Entry Point
+            function init() {
+                // 1. Create Engine
+                engine = Engine.create();
 
-        Composite.add(world, [
-            Bodies.rectangle(width / 2, height + 25, width, 50, wallOptions), // Ground
-            Bodies.rectangle(width + 25, height / 2, 50, height, wallOptions), // Right Wall
-            Bodies.rectangle(-25, height / 2, 50, height, wallOptions)       // Left Wall
-        ]);
-
-        // 2. The Rusty Chain
-        // We use a stack of rectangles linked together
-        const group = Body.nextGroup(true);
-        const linkWidth = 50;
-        const linkHeight = 20;
-
-        // Adjust density for "Heavy" feel
-        const chainY = height * 0.1;
-        const chain = Composites.stack(width / 2, chainY, 15, 1, 10, 10, function (x, y) {
-            return Bodies.rectangle(x, y, linkWidth, linkHeight, {
-                collisionFilter: { group: group },
-                density: 0.1, // High density for weight (default ~0.001)
-                frictionAir: 0.01,
-                render: {
-                    fillStyle: '#8d6e63', // Rusty brown
-                    strokeStyle: '#5d4037',
-                    lineWidth: 2
-                },
-                chamfer: { radius: 5 } // Rounded corners
-            });
-        });
-
-        Composites.chain(chain, 0.35, 0, -0.35, 0, { stiffness: 0.8, length: 0, render: { visible: false } });
-
-        // Fix the top link
-        Composite.add(world, [
-            chain,
-            Constraint.create({
-                bodyB: chain.bodies[0],
-                pointB: { x: -20, y: 0 },
-                pointA: { x: width / 2, y: chainY },
-                stiffness: 0.9,
-                render: { visible: true, strokeStyle: '#aaa', lineWidth: 5 }
-            })
-        ]);
-
-        // 2.b Extra Heavy Ball at end (Wrecking ball style) - Optional but fun
-        const ballSize = 40;
-        const ball = Bodies.circle(width / 2, chainY + 15 * (linkWidth + 10), ballSize, {
-            density: 0.2, // Very heavy
-            friction: 0.5,
-            render: { fillStyle: '#5d4037', strokeStyle: '#3e2723', lineWidth: 3 }
-        });
-        // Create constraint to attach ball to last link
-        const lastLink = chain.bodies[chain.bodies.length - 1];
-        const ballConstraint = Constraint.create({
-            bodyA: lastLink,
-            bodyB: ball,
-            pointA: { x: linkWidth / 2, y: 0 },
-            stiffness: 0.9,
-            render: { visible: true, strokeStyle: '#5d4037', lineWidth: 5 }
-        });
-        Composite.add(world, [ball, ballConstraint]);
-
-
-        // 3. Wooden Boxes (Targets)
-        const boxSize = 40; // Reduced from 60
-        const stackCols = 8; // More cols since boxes are smaller
-        const stackRows = 12; // More rows
-        let boxStack;
-
-        function createBoxStack() {
-            // Place them on the right side
-            return Composites.stack(width * 0.7, height - (stackRows * boxSize) - 50, stackCols, stackRows, 0, 0, function (x, y) {
-                return Bodies.rectangle(x, y, boxSize, boxSize, {
-                    density: 0.005, // Lighter than chain
-                    friction: 0.8,
-                    restitution: 0.1, // Low bounce
-                    render: {
-                        fillStyle: '#d2b48c', // Tan/Wood color
-                        strokeStyle: '#8d6e63',
-                        lineWidth: 2
+                // 2. Create Renderer
+                const container = document.getElementById('canvas-container');
+                render = Render.create({
+                    element: container,
+                    engine: engine,
+                    options: {
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                        background: COLORS.background,
+                        wireframes: false,
+                        showAngleIndicator: false
                     }
                 });
-            });
-        }
 
-        boxStack = createBoxStack();
-        Composite.add(world, boxStack);
+                // 3. Create Runner
+                runner = Runner.create();
 
-        window.resetScene = function () {
-            Composite.remove(world, boxStack);
-            boxStack = createBoxStack();
-            Composite.add(world, boxStack);
-        };
+                // 4. Start the Loop
+                Render.run(render);
+                Runner.run(runner, engine);
 
+                // 5. Build the Scene
+                reset(); // This handles initial population
 
-        // 4. Mouse Control
-        const mouse = Mouse.create(render.canvas);
-        const mouseConstraint = MouseConstraint.create(engine, {
-            mouse: mouse,
-            constraint: {
-                stiffness: 0.2,
-                render: {
-                    visible: false
+                // 6. Interaction
+                setupInteraction();
+
+                // 7. Event Listeners
+                setupEvents();
+
+                // 8. Resize Handler
+                window.addEventListener('resize', handleResize);
+            }
+
+            // --- Event Logic ---
+
+            function setupEvents() {
+                // "Active Awakening": Force wake-up on any collision
+                // This solves the issue where boxes stay sleeping even when hit gently
+
+                Events.on(engine, 'collisionStart', function (event) {
+                    const pairs = event.pairs;
+                    pairs.forEach(pair => {
+                        const bodyA = pair.bodyA;
+                        const bodyB = pair.bodyB;
+
+                        // Check for Touch-to-Wake Trigger
+                        // If a destructibleBox touches anything that is NOT another destructibleBox (e.g. ball, chain, ground)
+                        // Actually, logic is: "If one is destructibleBox AND the other is dynamic (Ball/Chain)"
+                        // Or safer: If destructibleBox touches Ball or Chain.
+                        const isBoxA = bodyA.label === 'destructibleBox';
+                        const isBoxB = bodyB.label === 'destructibleBox';
+
+                        if (isBoxA || isBoxB) {
+                            // If the OTHER body is not a box (e.g. ball, chain, or even ground if we want)
+                            // User said: "If touched by intermediate box", implied ball/chain interaction.
+                            // Let's exclude box-on-box collisions from triggering wake (they are touching at spawn)
+                            if (isBoxA && isBoxB) return;
+
+                            // Check if the other body is the Ball or Chain parts
+                            const other = isBoxA ? bodyB : bodyA;
+                            if (other.label !== 'destructibleBox' && !other.isStatic) {
+                                activateBoxes();
+                            }
+                        }
+                    });
+                });
+
+                // Friction Slider Listener
+                const slider = document.getElementById('frictionSlider');
+                const label = document.getElementById('frictionVal');
+
+                slider.addEventListener('input', function (e) {
+                    const val = parseFloat(e.target.value);
+                    label.innerText = val.toFixed(1);
+
+                    // Update friction for all existing boxes
+                    const allBodies = Composite.allBodies(engine.world);
+                    allBodies.forEach(body => {
+                        // Only target dynamic bodies that are not the wrecking ball
+                        if (!body.isStatic && body.label !== 'Circle Body') {
+                            body.friction = val;
+                        }
+                    });
+                });
+
+                // Restitution Slider Listener
+                const rSlider = document.getElementById('restitutionSlider');
+                const rLabel = document.getElementById('restitutionVal');
+
+                rSlider.addEventListener('input', function (e) {
+                    const val = parseFloat(e.target.value);
+                    rLabel.innerText = val.toFixed(1);
+
+                    const allBodies = Composite.allBodies(engine.world);
+                    allBodies.forEach(body => {
+                        if (!body.isStatic && body.label !== 'Circle Body') {
+                            body.restitution = val;
+                        }
+                    });
+                });
+            }
+
+            // --- Scene Building Logic ---
+
+            function reset() {
+                // 1. Clear World immediately
+                World.clear(engine.world);
+                Engine.clear(engine);
+
+                // 2. Update Dimensions
+                width = window.innerWidth;
+                height = window.innerHeight;
+                isMobile = width < 768;
+
+                // 3. Update Renderer Size
+                render.canvas.width = width;
+                render.canvas.height = height;
+                render.options.width = width;
+                render.options.height = height;
+
+                // 4. Rebuild Static Boundaries
+                createBoundaries();
+                createChainAndBall();
+                createBoxStack();
+
+                // 6. Touch-to-Wake ("Sleeping Giant")
+                // No timer. We wait for collision listener to trigger activateBoxes().
+                // Boxes spawn isStatic: true and stay that way until touched.
+
+                // 7. Restore Interaction
+                // World.clear() removed the constraint, so we must add it back.
+                if (mouseConstraint) {
+                    Composite.add(engine.world, mouseConstraint);
                 }
             }
-        });
-        Composite.add(world, mouseConstraint);
-        render.mouse = mouse;
 
-        // Resize handler
-        window.addEventListener('resize', () => {
-            const w = window.innerWidth;
-            const h = window.innerHeight;
+            function createBoundaries() {
+                const wallThick = 60;
+                const groundY = height + wallThick / 2; // Ensure floor is just at bottom edge
 
-            render.canvas.width = w;
-            render.canvas.height = h;
+                // Ground
+                const ground = Bodies.rectangle(width / 2, height + 30, width * 2, 60 + 60, { // Extra thick + offset to be flush
+                    isStatic: true,
+                    render: { fillStyle: COLORS.wall },
+                    friction: 1.0
+                });
 
-            // Reposition Walls
-            // Ground (body index 0 in our Composite.add call)
-            // Note: We need store references to walls to move them easily, or find them. 
-            // Simple hack: We know ground is world.bodies[0], Right is [1], Left is [2] if added first.
+                // Walls (Invisible buffers logic if needed, but here we explicitly draw them)
+                // Right Wall
+                const rightWall = Bodies.rectangle(width + 30, height / 2, 60, height * 2, {
+                    isStatic: true, render: { visible: false }
+                });
 
-            // Actually, let's just create variables for them globally (implicit here since script is top level)
-            // But relying on array index is risky. Let's assume standard order or just search.
-            // Better: Store them in vars when creating.
+                // Left Wall
+                const leftWall = Bodies.rectangle(-30, height / 2, 60, height * 2, {
+                    isStatic: true, render: { visible: false }
+                });
 
-            // Re-finding bodies for cleaner code:
-            // (Use the variables defined below if I could, but I'm editing a block)
-            // I'll just rewrite the resize logic to be robust if I had vars. 
-            // Since I am replacing the block, I can't easily change the setup code above without a huge replace.
-            // I will use `ground`, `rightWall` variables if I declare them? No they are inside local scope?
-            // Wait, the setup code `Composite.add(world, [Bodies...])` didn't assign to vars.
-            // I will skip complex body repositioning for now to avoid breaking things, 
-            // BUT I will fix the "cut off" by setting the canvas style to display: block and 100%.
+                Composite.add(engine.world, [ground, rightWall, leftWall]);
+            }
+
+            function createChainAndBall() {
+                const group = Body.nextGroup(true);
+
+                // Mobile Calibration
+                const ballRadius = isMobile ? 22 : 40;  // 22px on mobile, 40px desktop
+                const linkW = isMobile ? 35 : 50;
+                const linkH = isMobile ? 15 : 20;
+                const chainLengthPct = 0.55; // Chain takes up 55% of screen height
+
+                const chainCount = Math.floor((height * chainLengthPct) / (linkH * 1.1));
+
+                // 1. Create Chain Stack
+                const chainX = width / 2;
+                const chainY = height * 0.1;
+
+                const chain = Composites.stack(chainX, chainY, 1, chainCount, 0, 0, function (x, y) {
+                    return Bodies.rectangle(x, y, linkW, linkH, {
+                        collisionFilter: { group: group },
+                        density: PHYSICS.chainDensity,
+                        frictionAir: 0.005,
+                        chamfer: { radius: isMobile ? 3 : 5 },
+                        render: {
+                            fillStyle: COLORS.chainInfo.fill,
+                            strokeStyle: COLORS.chainInfo.stroke,
+                            lineWidth: 2
+                        }
+                    });
+                });
+
+                // 2. Connect Links
+                Composites.chain(chain, 0, 0.4, 0, -0.4, {
+                    stiffness: 0.9,
+                    length: 0,
+                    render: { visible: false }
+                });
+
+                // 3. Anchor Top
+                const anchor = Constraint.create({
+                    bodyB: chain.bodies[0],
+                    pointB: { x: 0, y: -linkH * 0.4 },
+                    pointA: { x: chainX, y: chainY },
+                    stiffness: 0.9,
+                    render: { strokeStyle: '#888', lineWidth: 4 }
+                });
+
+                // 4. Wrecking Ball
+                const lastLink = chain.bodies[chain.bodies.length - 1];
+                const ballY = lastLink.position.y + linkH + ballRadius;
+
+                const ball = Bodies.circle(chainX, ballY, ballRadius, {
+                    density: PHYSICS.ballDensity,
+                    friction: 0.5,
+                    restitution: 0, // No bounce, just heavy impact
+                    render: {
+                        fillStyle: COLORS.ball.fill,
+                        strokeStyle: COLORS.ball.stroke,
+                        lineWidth: 3
+                    }
+                });
+
+                // 5. Connect Ball to Chain
+                const ballConnect = Constraint.create({
+                    bodyA: lastLink,
+                    bodyB: ball,
+                    pointA: { x: 0, y: linkH * 0.4 },
+                    pointB: { x: 0, y: -ballRadius }, // Top of ball
+                    stiffness: 0.9,
+                    length: 5,
+                    render: { strokeStyle: '#3e2723', lineWidth: 4 }
+                });
+
+                Composite.add(engine.world, [chain, anchor, ball, ballConnect]);
+            }
+
+            function activateBoxes() {
+                // "Silent Descent" Activation
+                // Find all boxes (marked with label 'destructibleBox') and unfreeze them.
+                const allBodies = Composite.allBodies(engine.world);
+                allBodies.forEach(body => {
+                    if (body.label === 'destructibleBox') {
+                        Body.setStatic(body, false); // Unlock physics
+                        Sleeping.set(body, false);   // Ensure they are awake
+                    }
+                });
+            }
+
+            function createBoxStack() {
+                // Mobile Calibration
+                const boxS = isMobile ? 30 : 45; // Size
+                const cols = isMobile ? 3 : 6;   // 3 Cols for mobile
+                const rows = isMobile ? 20 : 12;  // Increased height (20 mobile / 12 desktop) for max challenge
+                const gap = 0; // ZERO GAP as requested
+
+                // Safe Zone Calculation
+
+
+                const rightEdge = width * 0.95;
+                const stackW = cols * (boxS + gap);
+
+                // Ensure stack is safely on the right but not clipping
+                const startX = rightEdge - stackW - (isMobile ? 15 : 50);
+                // Ground Top is at (height - 30).
+                // CORRECT FORMULA: startY needs to account for the box center (boxS/2).
+                // Subtracting rows of boxes from the ground.
+                // startY = GroundY - (boxS/2) - ((rows-1)*(boxS+gap))
+                // Exact math used here. Removed offset to prevent "ejection"
+                const startY = (height - 30) - (boxS / 2) - ((rows - 1) * (boxS + gap));
+
+                const stack = Composites.stack(startX, startY, cols, rows, gap, gap, function (x, y) {
+                    return Bodies.rectangle(x, y, boxS, boxS, {
+                        label: 'destructibleBox', // Label for activation targeting
+                        density: PHYSICS.boxDensity,
+                        friction: parseFloat(document.getElementById('frictionSlider').value), // Use current slider value
+                        frictionStatic: 10.0, // Keep static high for stability
+                        restitution: parseFloat(document.getElementById('restitutionSlider').value), // Bounciness
+                        isStatic: true,   // STATIC SPAWN: Pinned in space initially
+                        isSleeping: true, // Also sleeping, just in case
+                        chamfer: { radius: 2 },
+                        render: {
+                            fillStyle: COLORS.box.fill,
+                            strokeStyle: COLORS.box.stroke,
+                            lineWidth: 1
+                        }
+                    });
+                });
+
+                Composite.add(engine.world, stack);
+            }
+
+            function setupInteraction() {
+                const mouse = Mouse.create(render.canvas);
+
+                // REVERT: pixelRatio setting caused interaction issues on some devices.
+                // Matter.js Render module usually handles this automatically.
+                // Reverted to standard setup.
+
+                // Assign to module-level variable
+                mouseConstraint = MouseConstraint.create(engine, {
+                    mouse: mouse,
+                    constraint: {
+                        stiffness: 0.5, // BALANCED GRIP: 0.5 offers tight control without jitter
+                        damping: 0.1,   // Slight damping to prevent jitter
+                        angularStiffness: 0.9,
+                        render: { visible: false }
+                    }
+                });
+
+                // Scale touch inputs correctly
+                render.mouse = mouse;
+
+                Composite.add(engine.world, mouseConstraint);
+            }
+
+            function handleResize() {
+                // Debounce simple reset
+                reset();
+            }
+
+            // Expose Public API
+            return {
+                init: init,
+                reset: reset
+            };
+
+        }();
+
+        // Start Simulation
+        window.addEventListener('load', function () {
+            simulation = Simulation;
+            simulation.init();
         });
 
     </script>

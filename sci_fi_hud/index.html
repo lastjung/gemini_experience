@@ -373,7 +373,8 @@
 
             /* Stack Panels Vertically */
             .panel {
-                width: 85% !important;
+                width: 70% !important;
+                /* Narrower width */
                 left: 50% !important;
                 right: auto !important;
                 transform: translateX(-50%) !important;
@@ -384,22 +385,30 @@
             }
 
             .panel-left {
-                top: 5% !important;
-                /* Move to top */
+                top: 1% !important;
+                /* Move higher */
             }
 
             .panel-right {
                 top: auto !important;
-                bottom: 10% !important;
-                /* Move to bottom */
+                bottom: 1% !important;
+                /* Move lower */
             }
 
-            /* Adjust Alert Position */
+            /* Reduced height for log panel on mobile */
+            .data-stream {
+                height: 80px !important;
+            }
+
+            /* Adjust Alert Position & Size */
             .alert-box {
-                top: 40% !important;
-                width: 90%;
+                top: 40%;
+                /* Initial fallback */
+                width: auto !important;
+                min-width: 50%;
                 font-size: 18px;
-                padding: 15px;
+                padding: 15px 40px;
+                transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), top 0.3s ease;
             }
         }
     </style>
@@ -516,6 +525,11 @@
             if (Math.random() > 0.5) {
                 const text = alerts[Math.floor(Math.random() * alerts.length)];
                 alertBox.innerText = text;
+
+                // Randomize vertical position (20% to 60%)
+                const randomTop = Math.floor(Math.random() * 40) + 20;
+                alertBox.style.top = randomTop + "%";
+
                 alertBox.classList.add('active');
 
                 // Color Logic

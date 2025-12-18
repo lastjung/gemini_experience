@@ -13,16 +13,22 @@ You can view the live project at: **[https://lastjung.github.io/gemini_experienc
 
 ## 🚀 Quick Start
 
-To experience the full suite of projects locally:
-    Because many projects use advanced browser features (ES modules, textures, Web Workers), they require a local server to avoid CORS issues.
-    *   **VS Code**: Right-click `gemini_portfolio/index.html` and select "Open with Live Server".
-    *   **Python**:
-        ```bash
-        # Run inside the root directory
-        python3 -m http.server 8000
-        ```
+### 🚀 How to Run Locally
+To experience the full suite of projects, you **must use a local server**.
 
-3.  **Explore**:
+> **Note**: Many projects use advanced browser features (ES modules, textures, Web Workers) that require a server to avoid CORS issues.
+
+**Option 1: VS Code (Recommended)**
+1.  Right-click `gemini_portfolio/index.html` or `index.html`.
+2.  Select **"Open with Live Server"**.
+
+**Option 2: Python**
+Run the following command in the project root:
+```bash
+python3 -m http.server 8000
+```
+
+1.  **Explore**:
     Open `http://localhost:8000/index.html` (Recommended) or `http://localhost:8000/gemini_portfolio/index.html` in your browser. Both will work identicaly.
     *   Navigate the 3D space.
     *   Click on the galaxy to zoom in.
