@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -39,7 +40,7 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: 
+            background:
                 radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08), transparent 25%),
                 radial-gradient(circle at 85% 30%, rgba(129, 140, 248, 0.08), transparent 25%);
             z-index: -1;
@@ -47,7 +48,9 @@
         }
 
         /* Typography */
-        h1, h2, h3 {
+        h1,
+        h2,
+        h3 {
             font-weight: 700;
             line-height: 1.2;
         }
@@ -190,10 +193,23 @@
         }
 
         @keyframes moveDot {
-            0% { left: 0; opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { left: 100%; opacity: 0; }
+            0% {
+                left: 0;
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            90% {
+                opacity: 1;
+            }
+
+            100% {
+                left: 100%;
+                opacity: 0;
+            }
         }
 
         .node {
@@ -248,30 +264,48 @@
             .hero-title {
                 font-size: 2.5rem;
             }
+
             .diagram-container {
                 flex-direction: column;
                 gap: 2rem;
             }
+
             .connection-line {
                 width: 2px;
                 height: 50px;
                 max-width: 2px;
             }
+
             .connection-line::after {
                 top: 0;
                 left: 50%;
                 transform: translateX(-50%);
                 animation: moveDotVertical 2s infinite linear;
             }
+
             @keyframes moveDotVertical {
-                0% { top: 0; opacity: 0; }
-                10% { opacity: 1; }
-                90% { opacity: 1; }
-                100% { top: 100%; opacity: 0; }
+                0% {
+                    top: 0;
+                    opacity: 0;
+                }
+
+                10% {
+                    opacity: 1;
+                }
+
+                90% {
+                    opacity: 1;
+                }
+
+                100% {
+                    top: 100%;
+                    opacity: 0;
+                }
             }
         }
     </style>
 </head>
+
 <body>
     <div class="bg-glow"></div>
 
@@ -293,7 +327,8 @@
         <section id="about" class="fade-in-section">
             <h2><span class="gradient-text">MCP란 무엇인가요?</span></h2>
             <p style="margin-top: 1rem; font-size: 1.2rem; color: var(--text-secondary); max-width: 800px;">
-                MCP는 AI 애플리케이션(Client)과 데이터 소스(Server)를 연결하는 범용 프로토콜입니다. 마치 컴퓨터에 주변기기를 연결하는 USB 포트처럼, AI 모델이 세상의 다양한 데이터와 도구에 손쉽게 접근할 수 있도록 표준화된 방식을 제공합니다.
+                MCP는 AI 애플리케이션(Client)과 데이터 소스(Server)를 연결하는 범용 프로토콜입니다. 마치 컴퓨터에 주변기기를 연결하는 USB 포트처럼, AI 모델이 세상의 다양한
+                데이터와 도구에 손쉽게 접근할 수 있도록 표준화된 방식을 제공합니다.
             </p>
         </section>
 
@@ -369,7 +404,175 @@
     </footer>
 
     <script>
-        // Intersection Observer for fade-in animations
+        // --- Sound Manager ---
+        const SoundManager = {
+            ctx: null,
+            isMuted: true,
+            droneOscs: [],
+
+            init: function () {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.isMuted = false;
+                this.startAmbient();
+                console.log("MCP Audio Initialized");
+            },
+
+            createOsc: function (type, freq) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                return osc;
+            },
+
+            createGain: function (val) {
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(val, this.ctx.currentTime);
+                return gain;
+            },
+
+            // 1. Server Room Ambient
+            startAmbient: function () {
+                if (this.isMuted) return;
+                const t = this.ctx.currentTime;
+
+                // 60Hz Electrical Hum (very quiet)
+                const hum = this.createOsc('sine', 60);
+                const humGain = this.createGain(0.01);
+
+                // Fan Noise (Buffersource white noise)
+                const bufferSize = this.ctx.sampleRate;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+                const noiseGain = this.createGain(0.005);
+                const noiseFilter = this.ctx.createBiquadFilter();
+                noiseFilter.type = 'lowpass';
+                noiseFilter.frequency.value = 800;
+
+                hum.connect(humGain);
+                humGain.connect(this.ctx.destination);
+
+                noise.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+
+                hum.start(t);
+                noise.start(t);
+
+                this.droneOscs.push(hum, noise);
+            },
+
+            // 2. Reveal Whoosh (Soft Slide)
+            playReveal: function () {
+                if (this.isMuted || !this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('sine', 200);
+                const gain = this.createGain(0);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+
+                // Frequency Slide Up
+                osc.frequency.setValueAtTime(200, t);
+                osc.frequency.exponentialRampToValueAtTime(600, t + 0.3);
+
+                // Volume Swell
+                gain.gain.setValueAtTime(0, t);
+                gain.gain.linearRampToValueAtTime(0.05, t + 0.1);
+                gain.gain.linearRampToValueAtTime(0, t + 0.3);
+
+                osc.stop(t + 0.3);
+            },
+
+            // 3. Hover (Crisp Click)
+            playHover: function () {
+                if (this.isMuted || !this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('square', 2000);
+                const gain = this.createGain(0);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                gain.gain.setValueAtTime(0.02, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+                osc.stop(t + 0.03);
+            },
+
+            // 4. Wake Confimation
+            playWake: function () {
+                if (this.isMuted || !this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('sine', 880);
+                const gain = this.createGain(0);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+
+                // "Connected" sound (High-High)
+                osc.frequency.setValueAtTime(880, t);
+                osc.frequency.setValueAtTime(1760, t + 0.1);
+
+                gain.gain.setValueAtTime(0.05, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+                osc.stop(t + 0.2);
+            }
+        };
+
+        // --- Silent Audio Wake + UI ---
+        const audioStatus = document.createElement('div');
+        // Indigo/Blue theme
+        audioStatus.style.cssText = 'position:fixed;bottom:20px;right:20px;font-size:12px;color:#fff;background:rgba(0,0,0,0.8);padding:8px 15px;border-radius:4px;letter-spacing:1px;z-index:99999;font-family:monospace;pointer-events:none;border:1px solid #818cf8;box-shadow: 0 0 10px rgba(129, 140, 248, 0.3);';
+        audioStatus.innerText = 'AUDIO: OFFLINE [TOUCH]';
+        document.body.appendChild(audioStatus);
+
+        const wakeAudio = () => {
+            let contextResumed = false;
+
+            if (!SoundManager.ctx) {
+                SoundManager.init();
+                contextResumed = true;
+            } else if (SoundManager.ctx.state === 'suspended') {
+                SoundManager.ctx.resume();
+                contextResumed = true;
+            }
+
+            if (SoundManager.ctx && (SoundManager.ctx.state === 'running' || contextResumed)) {
+                audioStatus.innerText = 'AUDIO: ONLINE';
+                audioStatus.style.borderColor = '#38bdf8'; // Blue
+                audioStatus.style.boxShadow = '0 0 15px rgba(56, 189, 248, 0.5)';
+                audioStatus.style.color = '#38bdf8';
+
+                SoundManager.playWake();
+
+                ['click', 'touchstart', 'keydown'].forEach(evt =>
+                    document.removeEventListener(evt, wakeAudio)
+                );
+            }
+        };
+
+        ['click', 'touchstart', 'keydown'].forEach(evt =>
+            document.addEventListener(evt, wakeAudio)
+        );
+
+        // --- Interaction Logic ---
+
+        // Intersection Observer for fade-in animations + Audio
         const observerOptions = {
             root: null,
             rootMargin: '0px',
@@ -380,6 +583,8 @@
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     entry.target.classList.add('is-visible');
+                    // Play reveal sound if audio is ready
+                    if (SoundManager.ctx) SoundManager.playReveal();
                 }
             });
         }, observerOptions);
@@ -387,6 +592,12 @@
         document.querySelectorAll('.fade-in-section').forEach(section => {
             observer.observe(section);
         });
+
+        // Hover Sounds for Cards
+        document.querySelectorAll('.card, .cta-button, .node').forEach(el => {
+            el.addEventListener('mouseenter', () => SoundManager.playHover());
+        });
+
 
         // Smooth scroll for anchor links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -399,4 +610,5 @@
         });
     </script>
 </body>
+
 </html>

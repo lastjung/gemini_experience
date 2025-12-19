@@ -483,84 +483,222 @@
     </div>
 
     <script>
-        // --- Random Data Generation ---
+        // --- Sound Manager (Web Audio API) ---
+        const SoundManager = {
+            ctx: null,
+            isMuted: true,
+            droneOscs: [],
+
+            init: function () {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.isMuted = false;
+                this.startAmbientDrone();
+                console.log("Audio Initialized: Ambient Mode");
+            },
+
+            // oscillator helper
+            createOsc: function (type, freq, detune = 0) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                osc.detune.setValueAtTime(detune, this.ctx.currentTime);
+                return osc;
+            },
+
+            // Gain helper
+            createGain: function (val) {
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(val, this.ctx.currentTime);
+                return gain;
+            },
+
+            // 1. Mysterious Ambient Drone (Binaural Beats + Filter Sweep)
+            startAmbientDrone: function () {
+                if (this.isMuted) return;
+
+                // Layer 1: Deep Bass (Sine)
+                const osc1 = this.createOsc('sine', 40);
+                const gain1 = this.createGain(0.15);
+
+                // Layer 2: Detuned Harmony (Sine - Binaural Beat)
+                const osc2 = this.createOsc('sine', 42); // 2Hz beat
+                const gain2 = this.createGain(0.12);
+
+                // Layer 3: High Ethereal Texture (Triangle - Muffled)
+                const osc3 = this.createOsc('triangle', 120);
+                const gain3 = this.createGain(0.015);
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 100;
+                filter.Q.value = 1;
+
+                // Connect
+                osc1.connect(gain1); gain1.connect(this.ctx.destination);
+                osc2.connect(gain2); gain2.connect(this.ctx.destination);
+
+                osc3.connect(filter);
+                filter.connect(gain3);
+                gain3.connect(this.ctx.destination);
+
+                // Start
+                const t = this.ctx.currentTime;
+                osc1.start(t);
+                osc2.start(t);
+                osc3.start(t);
+                this.droneOscs.push(osc1, osc2, osc3);
+
+                // LFO to sweep filter (Slow breathing)
+                const lfo = this.createOsc('sine', 0.1); // 10s cycle
+                const lfoGain = this.createGain(50);
+                lfo.connect(lfoGain);
+                lfoGain.connect(filter.frequency);
+                lfo.start(t);
+            },
+
+            // 2. Data Ping (Sonar-like, slow attack/release)
+            playMysteriousPing: function () {
+                if (this.isMuted) return;
+                const t = this.ctx.currentTime;
+                // Sine wave for pure tone
+                const freq = 600 + Math.random() * 200; // Vary slightly
+                const osc = this.createOsc('sine', freq);
+                const gain = this.createGain(0);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                // Soft Attack
+                gain.gain.linearRampToValueAtTime(0.05, t + 0.1);
+                // Long Decay (Reverb simul)
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
+                osc.stop(t + 1.5);
+            },
+
+            // 3. Alert (Deep Pulse instead of Siren)
+            playDeepPulse: function () {
+                if (this.isMuted) return;
+                const t = this.ctx.currentTime;
+                const osc = this.createOsc('triangle', 100);
+                const gain = this.createGain(0);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                gain.gain.linearRampToValueAtTime(0.2, t + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 2.0);
+                osc.stop(t + 2.0);
+            }
+        };
+
+        // --- Data Logic ---
         const logPanel = document.getElementById('data-log');
         const alertBox = document.getElementById('alert-display');
+
+        // Audio Status Indicator
+        const audioStatus = document.createElement('div');
+        audioStatus.style.cssText = 'position:fixed;bottom:20px;right:20px;font-size:12px;color:#ff003c;letter-spacing:1px;z-index:99999;opacity:0.8;font-family:monospace;pointer-events:none;';
+        audioStatus.innerText = 'AUDIO: OFFLINE [TOUCH TO INIT]';
+        document.body.appendChild(audioStatus);
+
+        // Start Simulation Immediately
+        startSimulation();
+
+        // Silent Audio Wake (No Overlay)
+        const wakeAudio = () => {
+            let contextResumed = false;
+            if (!SoundManager.ctx) {
+                SoundManager.init();
+                contextResumed = true;
+            } else if (SoundManager.ctx.state === 'suspended') {
+                SoundManager.ctx.resume();
+                contextResumed = true;
+            }
+
+            if (SoundManager.ctx && (SoundManager.ctx.state === 'running' || contextResumed)) {
+                // UI Update
+                audioStatus.innerText = 'AUDIO: ONLINE';
+                audioStatus.style.color = '#00ff00';
+                audioStatus.style.textShadow = '0 0 10px #00ff00';
+
+                // Immediate Feedback Sound
+                SoundManager.playMysteriousPing();
+
+                // Remove listeners after success
+                ['click', 'touchstart', 'keydown'].forEach(evt =>
+                    document.removeEventListener(evt, wakeAudio)
+                );
+            }
+        };
+
+        ['click', 'touchstart', 'keydown'].forEach(evt =>
+            document.addEventListener(evt, wakeAudio)
+        );
+
+        // Strings
         const logs = [
-            "SCANNING PORTS...",
-            "BYPASSING FIREWALL...",
-            "DECRYPTING SECTOR 7...",
-            "UPLOADING VIRUS...",
-            "REROUTING PROXY...",
-            "PACKET LOSS: 0.002%",
-            "KERNEL PANIC AVERTED",
-            "SYNCING SATELLITE...",
-            "DOWNLOADING BLUEPRINTS..."
+            "SCANNING DEEP SPACE...", "ANALYZING WAVELENGTH...", "SEARCHING SECTOR 9...",
+            "CONNECTING TO HOST...", "DECRYPTING SIGNAL...", "ISOLATING FREQUENCY...",
+            "PATTERN MATCHED", "SYNCING ORBIT...", "DOWNLOADING ARCHIVE..."
         ];
 
         const alerts = [
-            "SYSTEM BREACH",
-            "ACCESS DENIED",
-            "CRITICAL ERROR",
-            "INTRUDER ALERT",
-            "POWER FAILURE",
-            "ACCESS GRANTED",
-            "UPLOAD COMPLETE",
-            "SYSTEM SECURED",
-            "OPTIMIZING CORE",
-            "PROTOCOL SYNCED"
+            "ANOMALY DETECTED", "SIGNAL LOST", "UNKNOWN ENTITY",
+            "PROXIMITY ALERT", "FIELD UNSTABLE", "ACCESS GRANTED",
+            "UPLOAD COMPLETE", "SYSTEM SECURED", "ALIGNMENT OK", "PROTOCOL SYNCED"
         ];
 
-        // 1. Matrix Text Rain / Data Stream
-        setInterval(() => {
-            const line = document.createElement('div');
-            line.innerText = "> " + logs[Math.floor(Math.random() * logs.length)] + " [" + Math.floor(Math.random() * 9999) + "]";
-            logPanel.prepend(line);
-            if (logPanel.children.length > 10) logPanel.lastChild.remove();
-        }, 300);
+        function startSimulation() {
+            // 1. Data Stream (Slower Tempo)
+            setInterval(() => {
+                const line = document.createElement('div');
+                line.innerText = "> " + logs[Math.floor(Math.random() * logs.length)];
+                logPanel.prepend(line);
+                if (logPanel.children.length > 8) logPanel.lastChild.remove();
 
-        // 2. Random Alerts (Balanced Frequency & Colors)
-        setInterval(() => {
-            // Trigger 50% chance every 2.5 seconds
-            if (Math.random() > 0.5) {
-                const text = alerts[Math.floor(Math.random() * alerts.length)];
-                alertBox.innerText = text;
+                // AUDIO TRIGGER (Much softer/rare)
+                SoundManager.playMysteriousPing();
+            }, 2500); // 2.5s interval (Slow & Ethereal)
 
-                // Randomize vertical position (20% to 60%)
-                const randomTop = Math.floor(Math.random() * 40) + 20;
-                alertBox.style.top = randomTop + "%";
+            // 2. Random Alerts (Slower)
+            setInterval(() => {
+                if (Math.random() > 0.7) {
+                    const text = alerts[Math.floor(Math.random() * alerts.length)];
+                    alertBox.innerText = text;
+                    const randomTop = Math.floor(Math.random() * 40) + 20;
+                    alertBox.style.top = randomTop + "%";
+                    alertBox.classList.add('active');
 
-                alertBox.classList.add('active');
+                    // Color Logic
+                    if (["ACCESS GRANTED", "SYSTEM SECURED", "PROTOCOL SYNCED", "ALIGNMENT OK"].includes(text)) {
+                        alertBox.style.borderColor = '#00ff00'; alertBox.style.color = '#00ff00';
+                        alertBox.style.boxShadow = '0 0 30px #00ff00, inset 0 0 20px #00ff00';
+                    } else if (["UPLOAD COMPLETE"].includes(text)) {
+                        alertBox.style.borderColor = '#00f3ff'; alertBox.style.color = '#00f3ff';
+                        alertBox.style.boxShadow = '0 0 30px #00f3ff, inset 0 0 20px #00f3ff';
+                    } else {
+                        alertBox.style.borderColor = '#ff003c'; alertBox.style.color = '#ff003c';
+                        alertBox.style.boxShadow = '0 0 30px #ff003c, inset 0 0 20px #ff003c';
 
-                // Color Logic
-                if (text === "ACCESS GRANTED" || text === "SYSTEM SECURED" || text === "PROTOCOL SYNCED") {
-                    alertBox.style.borderColor = '#00ff00'; // Green
-                    alertBox.style.color = '#00ff00';
-                    alertBox.style.boxShadow = '0 0 30px #00ff00, inset 0 0 20px #00ff00';
-                } else if (text === "UPLOAD COMPLETE" || text === "OPTIMIZING CORE") {
-                    alertBox.style.borderColor = '#00f3ff'; // Cyan
-                    alertBox.style.color = '#00f3ff';
-                    alertBox.style.boxShadow = '0 0 30px #00f3ff, inset 0 0 20px #00f3ff';
-                } else {
-                    alertBox.style.borderColor = '#ff003c'; // Red (Default Alert)
-                    alertBox.style.color = '#ff003c';
-                    alertBox.style.boxShadow = '0 0 30px #ff003c, inset 0 0 20px #ff003c';
+                        // AUDIO TRIGGER
+                        SoundManager.playDeepPulse();
+                    }
+
+                    setTimeout(() => alertBox.classList.remove('active'), 2000);
                 }
+            }, 6000); // Very slow check frequency
 
-                setTimeout(() => {
-                    alertBox.classList.remove('active');
-                }, 1500);
-            }
-        }, 2500);
-
-        // 3. Sound Effect Sim (Visual Only for now, shake screen or something)
-        // Just adding a random 'glitch' effect to body transform
-        setInterval(() => {
-            if (Math.random() > 0.95) {
-                document.body.style.transform = `translate(${Math.random() * 4 - 2}px, ${Math.random() * 4 - 2}px)`;
-                setTimeout(() => document.body.style.transform = 'none', 100);
-            }
-        }, 1000);
+            // 3. Glitch
+            setInterval(() => {
+                if (Math.random() > 0.98) {
+                    document.body.style.transform = `translate(${Math.random() * 2 - 1}px, ${Math.random() * 2 - 1}px)`;
+                    setTimeout(() => document.body.style.transform = 'none', 100);
+                }
+            }, 2000);
+        }
     </script>
 </body>
 

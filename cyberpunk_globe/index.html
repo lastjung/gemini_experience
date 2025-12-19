@@ -308,6 +308,9 @@
                 speed: 0.5 + Math.random(),
                 maxLife: 100 // frames
             });
+
+            // Audio: Data Chirp
+            if (typeof SoundManager !== 'undefined') SoundManager.playDataChirp();
         }
 
         // --- Objects: 6. Surface Markers (Hex Nodes) ---
@@ -405,17 +408,32 @@
                 life: 0,
                 maxLife: 150 + Math.random() * 100,
             });
+
+            // Audio: Sizzle
+            if (typeof SoundManager !== 'undefined') SoundManager.playSizzle();
         }
 
 
         // --- Animation ---
         const clock = new THREE.Clock();
+        let lastAzimuth = 0;
 
         function animate() {
             requestAnimationFrame(animate);
 
             const time = clock.getElapsedTime();
             controls.update();
+
+            // Audio: Camera Rotation Check
+            if (typeof SoundManager !== 'undefined' && SoundManager.ctx) {
+                const azimuth = controls.getAzimuthalAngle();
+                const delta = Math.abs(azimuth - lastAzimuth);
+                // Wrap around handling logic omitted for simplicity (delta spike), just clamping
+                if (delta < 0.5) { // Ignore wrap-around spikes
+                    SoundManager.updateRotation(delta * 100); // Scale up
+                }
+                lastAzimuth = azimuth;
+            }
 
             // 0. Rotate Globe (Decoupled from Camera)
             globeGroup.rotation.y += 0.002; // Spin speed (was autoRotateSpeed)
@@ -504,6 +522,155 @@
 
             composer.render();
         }
+
+        // --- Sound Manager (Cyberpunk Globe) ---
+        const SoundManager = {
+            ctx: null,
+            masterGain: null,
+            bassFilter: null,
+            humOsc: null,
+
+            init: function () {
+                if (this.ctx) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.value = 0.5;
+                this.masterGain.connect(this.ctx.destination);
+
+                this.startAmbient();
+
+                // Update UI
+                const hud = document.getElementById('info');
+                if (hud) hud.innerHTML += '<br><span style="color:#39FF14; font-size:10px;">SYSTEM AUDIO: ONLINE</span>';
+            },
+
+            createOsc: function (type, freq) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                return osc;
+            },
+
+            createGain: function (val) {
+                const g = this.ctx.createGain();
+                g.gain.setValueAtTime(val, this.ctx.currentTime);
+                return g;
+            },
+
+            startAmbient: function () {
+                const t = this.ctx.currentTime;
+
+                // 1. Synth Bass Drone (Sawtooth + LPF) - "Reese" feel
+                const bassOsc1 = this.createOsc('sawtooth', 80);
+                const bassOsc2 = this.createOsc('sawtooth', 82); // Detuned
+                const bassGain = this.createGain(0.15);
+
+                this.bassFilter = this.ctx.createBiquadFilter();
+                this.bassFilter.type = 'lowpass';
+                this.bassFilter.frequency.value = 120; // Starts closed
+                this.bassFilter.Q.value = 2;
+
+                bassOsc1.connect(this.bassFilter);
+                bassOsc2.connect(this.bassFilter);
+                this.bassFilter.connect(bassGain);
+                bassGain.connect(this.masterGain);
+
+                bassOsc1.start(t);
+                bassOsc2.start(t);
+
+                // 2. Electric Hum (High Sine Harmonics)
+                this.humOsc = this.createOsc('sine', 60);
+                const humGain = this.createGain(0.02);
+
+                // Add some FM synthesis for "buzz"
+                const fmOsc = this.createOsc('square', 120);
+                const fmGain = this.createGain(30);
+                fmOsc.connect(fmGain);
+                fmGain.connect(this.humOsc.frequency);
+                fmOsc.start(t);
+
+                this.humOsc.connect(humGain);
+                humGain.connect(this.masterGain);
+                this.humOsc.start(t);
+            },
+
+            // Interaction: Modulate Bass based on rotation speed
+            updateRotation: function (speed) {
+                if (!this.ctx || !this.bassFilter) return;
+                // Map speed (approx 0.002 to 0.05?) to Filter Frequency
+                // Base 120, Max 400
+                const target = 120 + (Math.abs(speed) * 8000);
+                this.bassFilter.frequency.setTargetAtTime(target, this.ctx.currentTime, 0.1);
+            },
+
+            // Event: Data Arc (Digital Chirp)
+            playDataChirp: function () {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('square', 880);
+                const gain = this.createGain(0.05);
+
+                // Arpeggio / Modem-like
+                osc.frequency.setValueAtTime(880, t);
+                osc.frequency.setValueAtTime(1760, t + 0.05);
+                osc.frequency.setValueAtTime(3520, t + 0.1);
+
+                gain.gain.setValueAtTime(0.05, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start(t);
+                osc.stop(t + 0.2);
+            },
+
+            // Event: Solar Flare (Sizzle)
+            playSizzle: function () {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const bufSize = this.ctx.sampleRate * 0.5;
+                const buffer = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(200, t);
+                filter.frequency.linearRampToValueAtTime(800, t + 0.5);
+
+                const gain = this.createGain(0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.masterGain);
+                noise.start(t);
+            },
+
+            // Interaction: Rotate Sound (Manual Drag)
+            playRotateWhoosh: function (velocity) {
+                // Could add a specific whoosh for manual drag, 
+                // but modifying the bass filter in updateRotation might be enough?
+                // Let's rely on updateRotation for continuous feedback.
+            }
+        };
+
+        // --- Init Audio on first interaction ---
+        const initAudio = () => {
+            SoundManager.init();
+            if (SoundManager.ctx && SoundManager.ctx.state === 'suspended') SoundManager.ctx.resume();
+            window.removeEventListener('click', initAudio);
+            window.removeEventListener('touchstart', initAudio);
+        };
+        window.addEventListener('click', initAudio);
+        window.addEventListener('touchstart', initAudio);
 
         // --- Resize Handler ---
         window.addEventListener('resize', onWindowResize, false);

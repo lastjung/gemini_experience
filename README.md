@@ -52,7 +52,7 @@ This repository contains **18+ unique web experiments**. Below is a summary of e
 ### 💧 Physics & Simulations
 *   **[Fluid Particles](./fluid_particles/index.html)**: High-performance 2D fluid dynamics with 3,500+ particles using a Spatial Hash Grid.
 *   **[Ink Fluid Sim](./ink_fluid_sim/index.html)**: GPU-accelerated (GPGPU) Stable Fluids simulation illustrating ink diffusion.
-*   **[Neon Slime](./neon_slime/index.html)**: Soft-body physics simulation using Matter.js; a giant interactive jelly structure.
+*   **[Neon Slime](./neon_slime/index.html)**: Soft-body physics simulation with dynamic impact audio and "Whoosh" throw effects.
 *   **[Velvet Cloth](./velvet_simulation/index.html)**: Tearable cloth physics using Verlet Integration.
 *   **[Rusty Chain](./rusty_chain/index.html)**: Heavy physical chain simulation with destructible crates.
 *   **[Chladni Patterns](./chladni_patterns/index.html)**: Visualizing acoustic resonance patterns on vibrating plates.
@@ -64,7 +64,7 @@ This repository contains **18+ unique web experiments**. Below is a summary of e
 *   **[Sci-Fi HUD](./sci_fi_hud/index.html)**: Complex Iron Man-style interface built entirely with CSS animations and SVG.
 
 ### 🧠 AI & Algorithms
-*   **[Ant Colony](./ant_colony/index.html)**: Swarm intelligence simulation where 1,200 agents find shortest paths via pheromone trails.
+*   **[Ant Colony](./ant_colony/index.html)**: Swarm intelligence simulation with independent agents, pheromone trails, and a reactive nature soundscape.
 *   **[MCP Landing](./mcp_landing/index.html)**: Educational page for the Model Context Protocol with interactive diagrams.
 
 ## 📱 Mobile Optimization (v2.1)
@@ -72,6 +72,12 @@ This repository contains **18+ unique web experiments**. Below is a summary of e
 *   **Touch-Friendly UI**: Project cards automatically reveal details without hover interactions.
 *   **Optimized Navigation**: Projects open in a new tab on mobile to prevent modal/scrolling conflicts.
 *   **Performance**: Reduced particle count and adjusted camera field-of-view for a balanced visual experience on smaller screens.
+
+## 🔊 Immersive Audio Experience (v3.0)
+*   **Zero-Asset Synthesis**: All sounds are generated in real-time using the **Web Audio API**. No MP3/WAV files required.
+*   **Responsive Soundscapes**: Audio reacts to user interactions (scrolling, clicking, rotating, physics collisions).
+*   **Silent Wake**: Adheres to browser autoplay policies by initializing audio only on the first user interaction.
+*   **Spatial Awareness**: Multi-layered synthesized audio (Bass Drones, FM Synthesis, Noise Filters) creates a deep, cinematic atmosphere.
 
 ## 🛠️ Technology Stack
 

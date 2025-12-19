@@ -325,6 +325,11 @@
                     positions[i].y = topReset;
                     positions[i].x = (Math.random() - 0.5) * 120; // Wider range
                     positions[i].z = (Math.random() - 0.5) * 100 - 40; // Random depth
+
+                    // Audio: Trigger Glitch (25% chance)
+                    if (Math.random() < 0.25 && typeof SoundManager !== 'undefined' && SoundManager.active) {
+                        SoundManager.playGlitch();
+                    }
                 }
 
                 // Update Matrix
@@ -338,6 +343,12 @@
             // 2. Camera Look
             camera.rotation.y += ((-mouseX * 2) - camera.rotation.y) * 0.05;
             camera.rotation.x += ((-mouseY * 2) - camera.rotation.x) * 0.05;
+
+            // Audio: Modulate filter based on look speed/angle
+            if (typeof SoundManager !== 'undefined' && SoundManager.active) {
+                const speed = (Math.abs(mouseX) + Math.abs(mouseY)) * 10;
+                SoundManager.updateStream(speed);
+            }
 
             // Removed camera scroll logic
             // scrollZ += (targetScrollZ - scrollZ) * 0.1;
@@ -354,6 +365,137 @@
         });
 
         animate();
+    </script>
+    </script>
+
+    <script>
+        // --- Sound Manager (Digital Glitch / Data Rain) ---
+        const SoundManager = {
+            ctx: null,
+            active: false,
+            droneNode: null, // { osc, noise, filter, gain }
+
+            init: function () {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.active = true;
+                this.startAmbient();
+            },
+
+            createOsc: function (type, freq) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                return osc;
+            },
+
+            createGain: function (val) {
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(val, this.ctx.currentTime);
+                return gain;
+            },
+
+            startAmbient: function () {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                // 1. Electric Drone (Low Sawtooth)
+                const osc = this.createOsc('sawtooth', 60); // Mains hum
+                const droneGain = this.createGain(0.05);
+
+                const droneFilter = this.ctx.createBiquadFilter();
+                droneFilter.type = 'lowpass';
+                droneFilter.frequency.value = 120;
+
+                osc.connect(droneFilter);
+                droneFilter.connect(droneGain);
+                droneGain.connect(this.ctx.destination);
+                osc.start(t);
+
+                // 2. Data Stream Noise (High Pass)
+                const bufSize = this.ctx.sampleRate * 2;
+                const buffer = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+
+                const streamFilter = this.ctx.createBiquadFilter();
+                streamFilter.type = 'bandpass';
+                streamFilter.frequency.value = 2000;
+                streamFilter.Q.value = 2;
+
+                const streamGain = this.ctx.createGain();
+                streamGain.gain.value = 0.02;
+
+                noise.connect(streamFilter);
+                streamFilter.connect(streamGain);
+                streamGain.connect(this.ctx.destination);
+                noise.start(t);
+
+                this.droneNode = { osc, noise, filter: streamFilter, gain: streamGain, droneGain };
+            },
+
+            // Modulate Data Stream based on movement
+            updateStream: function (speed) {
+                if (!this.droneNode) return;
+                const t = this.ctx.currentTime;
+                // Speed opens up the filter and adds slight volume
+                const targetFreq = 2000 + (speed * 1000);
+                this.droneNode.filter.frequency.setTargetAtTime(targetFreq, t, 0.1);
+
+                // Drone gets slightly louder/buzzy
+                this.droneNode.droneGain.gain.setTargetAtTime(0.05 + (speed * 0.02), t, 0.1);
+            },
+
+            // Short digital blip (Square wave)
+            playGlitch: function () {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('square', 800 + Math.random() * 1000);
+                const gain = this.createGain(0.15); // Clear boost
+
+                // Very short envelope
+                gain.gain.setValueAtTime(0.15, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+                // Bitcrush effect simulation (Frequency modulation)
+                osc.frequency.setValueAtTime(800 + Math.random() * 500, t);
+                osc.frequency.linearRampToValueAtTime(100, t + 0.05); // Downsweep
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.05);
+            }
+        };
+
+        // UI status
+        const audioStatus = document.createElement('div');
+        Object.assign(audioStatus.style, {
+            position: 'absolute', bottom: '10px', right: '10px',
+            color: 'rgba(0, 255, 0, 0.5)', fontFamily: 'Courier New', fontSize: '12px',
+            pointerEvents: 'none', userSelect: 'none', textShadow: '0 0 5px #0f0'
+        });
+        audioStatus.textContent = "SYSTEM: SILENT";
+        document.body.appendChild(audioStatus);
+
+        function initAudio() {
+            if (!SoundManager.ctx) {
+                SoundManager.init();
+                audioStatus.textContent = "SYSTEM: ONLINE";
+                audioStatus.style.opacity = "1";
+            }
+            if (SoundManager.ctx && SoundManager.ctx.state === 'suspended') {
+                SoundManager.ctx.resume();
+            }
+        }
+
+        window.addEventListener('click', initAudio);
+        window.addEventListener('touchstart', initAudio, { passive: false });
     </script>
 </body>
 

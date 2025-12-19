@@ -320,6 +320,7 @@
                                 // Fall or Sink (Swap)
                                 grid[below] = STONE;
                                 grid[i] = belowType === EMPTY ? EMPTY : belowType;
+                                if (SoundManager && SoundManager.ctx) SoundManager.playGrain(STONE);
                             } else {
                                 // Pile (Slide)
                                 const dir = Math.random() > 0.5 ? 1 : -1;
@@ -345,6 +346,7 @@
                             if (grid[below] === EMPTY) {
                                 grid[below] = SAND;
                                 grid[i] = EMPTY;
+                                if (SoundManager && SoundManager.ctx) SoundManager.playGrain(SAND);
                             } else if (grid[below] === WATER || grid[below] === ACID) {
                                 // Sink in liquids
                                 const liquid = grid[below];
@@ -378,6 +380,7 @@
                                 // Extinguish fire -> steam
                                 grid[below] = STEAM;
                                 grid[i] = STEAM;
+                                if (SoundManager && SoundManager.ctx) SoundManager.playGrain(FIRE); // Hiss
                             } else {
                                 // Spread horizontal
                                 const dir = Math.random() > 0.5 ? 1 : -1;
@@ -417,6 +420,7 @@
                             if (ni >= 0 && ni < grid.length && grid[ni] === WATER) {
                                 grid[ni] = STEAM; // Boil neighbor
                                 boiled = true;
+                                if (SoundManager && SoundManager.ctx) SoundManager.playGrain(FIRE);
                             }
                         }
                         if (boiled) {
@@ -464,6 +468,7 @@
                                     if (Math.random() > 0.1) { // Fast corrosion
                                         grid[ni] = Math.random() > 0.5 ? SMOKE : EMPTY;
                                         grid[i] = Math.random() > 0.8 ? SMOKE : EMPTY; // Acid used up
+                                        if (SoundManager && SoundManager.ctx) SoundManager.playGrain(ACID);
                                     }
                                 }
                             }
@@ -628,6 +633,187 @@
                 else if (type === 'acid') currentType = ACID;
             });
         });
+
+        // --- Sound Manager ---
+        const SoundManager = {
+            ctx: null,
+            isMuted: true,
+            droneNodes: [],
+
+            init: function () {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.isMuted = false;
+                console.log("Sand Audio Initialized");
+                this.startAmbient();
+            },
+
+            createOsc: function (type, freq) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                return osc;
+            },
+
+            createGain: function (val) {
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(val, this.ctx.currentTime);
+                return gain;
+            },
+
+            // 1. Ambient (Subtle Cave Wind)
+            startAmbient: function () {
+                if (this.isMuted) return;
+                const bufferSize = this.ctx.sampleRate * 2;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 150; // Deep rumble
+
+                const gain = this.createGain(0.015);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start();
+                this.droneNodes.push(noise);
+            },
+
+            // 2. Granular Synthesis for Elements
+            // We don't play a sound for EVERY pixel move (too loud). 
+            // We use a probabilistic trigger or aggregate intensity.
+            playGrain: function (type) {
+                if (this.isMuted || !this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                // Limit density
+                if (Math.random() > 0.1) return;
+
+                const gain = this.createGain(0.05);
+                // Quick decay
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+                let source;
+
+                if (type === SAND) {
+                    // White noise burst
+                    const osc = this.createOsc('square', Math.random() * 200 + 800);
+                    osc.connect(gain);
+                    osc.start(t);
+                    osc.stop(t + 0.05);
+                } else if (type === WATER) {
+                    // Bubble (Sine chirp)
+                    const osc = this.createOsc('sine', Math.random() * 400 + 400);
+                    osc.connect(gain);
+                    osc.frequency.exponentialRampToValueAtTime(100, t + 0.1);
+                    osc.start(t);
+                    osc.stop(t + 0.1);
+                } else if (type === STONE) {
+                    // Thud
+                    const osc = this.createOsc('triangle', Math.random() * 50 + 50);
+                    osc.connect(gain);
+                    osc.start(t);
+                    osc.stop(t + 0.1);
+                } else if (type === FIRE || type === ACID) {
+                    // SIZZLE (High Pass Noise)
+                    const bufferSize = this.ctx.sampleRate * 0.2; // Longer duration
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = Math.random() * 2 - 1;
+                    }
+
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buffer;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'highpass';
+                    filter.frequency.value = 1000; // Sizzle hiss
+
+                    const sGain = this.createGain(0.15); // Distinct volume
+                    sGain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+                    noise.connect(filter);
+                    filter.connect(sGain);
+                    sGain.connect(this.ctx.destination);
+
+                    noise.start(t);
+                    return; // Bypass default gain connection
+                }
+
+                gain.connect(this.ctx.destination);
+            },
+
+            // 3. Wake
+            playWake: function () {
+                if (this.isMuted || !this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('sine', 440);
+                const gain = this.createGain(0);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t); // Major Triad Arpeggio
+                osc.frequency.setValueAtTime(440, t);
+                osc.frequency.setValueAtTime(554, t + 0.1); // C#
+                osc.frequency.setValueAtTime(659, t + 0.2); // E
+
+                gain.gain.setValueAtTime(0, t);
+                gain.gain.linearRampToValueAtTime(0.1, t + 0.05);
+                gain.gain.linearRampToValueAtTime(0, t + 0.4);
+
+                osc.stop(t + 0.4);
+            }
+        };
+
+        // --- Silent Audio Wake + UI ---
+        const audioStatus = document.createElement('div');
+        // Sand/Gold Theme
+        audioStatus.style.cssText = 'position:fixed;bottom:20px;right:20px;font-size:12px;color:#fff;background:rgba(0,0,0,0.8);padding:8px 15px;border-radius:4px;letter-spacing:1px;z-index:99999;font-family:sans-serif;pointer-events:none;border:1px solid #e6c229;box-shadow: 0 0 10px rgba(230, 194, 41, 0.3);';
+        audioStatus.innerText = 'AUDIO: OFFLINE [TOUCH]';
+        document.body.appendChild(audioStatus);
+
+        const wakeAudio = () => {
+            let contextResumed = false;
+
+            if (!SoundManager.ctx) {
+                SoundManager.init();
+                contextResumed = true;
+            } else if (SoundManager.ctx.state === 'suspended') {
+                SoundManager.ctx.resume();
+                contextResumed = true;
+            }
+
+            if (SoundManager.ctx && (SoundManager.ctx.state === 'running' || contextResumed)) {
+                audioStatus.innerText = 'AUDIO: ONLINE';
+                audioStatus.style.borderColor = '#e6c229';
+                audioStatus.style.boxShadow = '0 0 15px rgba(230, 194, 41, 0.5)';
+                audioStatus.style.color = '#e6c229';
+
+                SoundManager.playWake();
+
+                ['click', 'touchstart', 'keydown'].forEach(evt =>
+                    document.removeEventListener(evt, wakeAudio)
+                );
+            }
+        };
+
+        ['click', 'touchstart', 'keydown'].forEach(evt =>
+            document.addEventListener(evt, wakeAudio)
+        );
+
+        // --- Audio Integration Hook in Update ---
 
         // Loop
         function loop() {

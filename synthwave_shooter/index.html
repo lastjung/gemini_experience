@@ -146,6 +146,8 @@
             bullets.length = 0;
             enemies.length = 0;
             particles.length = 0;
+
+            if (SoundManager.ctx) SoundManager.playBGM();
         }
 
         function shoot() {
@@ -159,6 +161,7 @@
             });
             // Screen shake kickback
             shake = 2;
+            SoundManager.playShoot();
         }
 
         // --- Core Render Loop ---
@@ -351,6 +354,8 @@
                         shake = 10; // Big shake
                         score += 100;
                         scoreEl.innerText = score;
+                        SoundManager.playExplosion();
+                        SoundManager.playScore();
                         enemies.splice(i, 1);
                         bullets.splice(j, 1);
                         break; // Stop checking this enemy
@@ -492,9 +497,215 @@
             gameActive = false;
             shake = 20;
             gameOverEl.style.display = 'block';
+            if (SoundManager && SoundManager.ctx) SoundManager.playGameOver();
         }
 
-        // Start
+        // --- Sound Manager (Synthwave) ---
+        const SoundManager = {
+            ctx: null,
+            bgmOscillators: [],
+            isPlayingBGM: false,
+            tempo: 140, // BPM
+            noteIndex: 0,
+            bgmInterval: null,
+
+            init: function () {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                console.log("Audio Initialized");
+            },
+
+            // Helper: Create Oscillator
+            createOsc: function (type, freq) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                return osc;
+            },
+
+            // Helper: Create Gain
+            createGain: function (val) {
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(val, this.ctx.currentTime);
+                return gain;
+            },
+
+            // 1. Shoot (Laser Pew)
+            playShoot: function () {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('sawtooth', 800); // Sharp retro sound
+                const gain = this.createGain(0.1);
+
+                // Filter for "Zap" feel
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(3000, t);
+                filter.frequency.exponentialRampToValueAtTime(100, t + 0.15);
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                osc.stop(t + 0.15);
+
+                // Pitch Sweep
+                osc.frequency.setValueAtTime(1200, t);
+                osc.frequency.exponentialRampToValueAtTime(100, t + 0.15);
+
+                // Volume Envelope
+                gain.gain.setValueAtTime(0.1, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+            },
+
+            // 2. Explosion (Noise Burst)
+            playExplosion: function () {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+
+                // Noise
+                const bufferSize = this.ctx.sampleRate * 0.5;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const noiseFilter = this.ctx.createBiquadFilter();
+                noiseFilter.type = 'lowpass';
+                noiseFilter.frequency.setValueAtTime(800, t);
+                noiseFilter.frequency.linearRampToValueAtTime(100, t + 0.3);
+
+                const noiseGain = this.createGain(0.3);
+                noiseGain.gain.setValueAtTime(0.3, t);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+
+                noise.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                noise.start(t);
+
+                // Sub Bass Hit
+                const sub = this.createOsc('sine', 100);
+                const subGain = this.createGain(0.5);
+                sub.connect(subGain);
+                subGain.connect(this.ctx.destination);
+                sub.start(t);
+                sub.stop(t + 0.3);
+                sub.frequency.exponentialRampToValueAtTime(10, t + 0.3);
+                subGain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+            },
+
+            // 3. Score (High Chime)
+            playScore: function () {
+                if (!this.ctx) return;
+                const t = this.ctx.currentTime;
+                const osc = this.createOsc('sine', 1500);
+                const gain = this.createGain(0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+            },
+
+            // 4. Game Over (Power Down)
+            playGameOver: function () {
+                if (!this.ctx) return;
+                this.stopBGM();
+                const t = this.ctx.currentTime;
+
+                const osc = this.createOsc('sawtooth', 200);
+                const gain = this.createGain(0.2);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                osc.stop(t + 1.5);
+
+                osc.frequency.setValueAtTime(200, t);
+                osc.frequency.exponentialRampToValueAtTime(10, t + 1.5);
+                gain.gain.linearRampToValueAtTime(0, t + 1.5);
+            },
+
+            // 5. BGM (Synthwave Bass Arp)
+            playBGM: function () {
+                if (!this.ctx || this.isPlayingBGM) return;
+                this.isPlayingBGM = true;
+                this.noteIndex = 0;
+
+                // 140 BPM -> 16th notes = (60/140)/4 * 1000 ms
+                const interval = (60 / this.tempo) / 4 * 1000;
+
+                const notes = [65.41, 82.41, 98.00, 123.47]; // C2, E2, G2, B2 (C Maj7 Arp)
+
+                this.bgmInterval = setInterval(() => {
+                    if (!this.ctx || this.ctx.state !== 'running') return;
+
+                    const t = this.ctx.currentTime;
+                    const freq = notes[this.noteIndex % notes.length];
+                    this.noteIndex++;
+
+                    const osc = this.createOsc('sawtooth', freq);
+                    const gain = this.createGain(0.15);
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(200, t);
+                    filter.frequency.linearRampToValueAtTime(600, t + 0.05); // Pluck
+                    filter.frequency.exponentialRampToValueAtTime(200, t + 0.1);
+
+                    osc.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(t);
+                    osc.stop(t + 0.15); // Short staccato bass
+                    gain.gain.setValueAtTime(0.15, t);
+                    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+
+                }, interval);
+            },
+
+            stopBGM: function () {
+                this.isPlayingBGM = false;
+                if (this.bgmInterval) clearInterval(this.bgmInterval);
+            }
+        };
+
+        // --- Silent Audio Wake + UI ---
+        const audioStatus = document.createElement('div');
+        // Retro Style UI
+        audioStatus.style.cssText = 'position:fixed;bottom:20px;right:20px;font-size:16px;color:#d946ef;background:rgba(0,0,0,0.8);padding:10px 20px;border:2px solid #d946ef;font-family:"Courier New", monospace;z-index:99999;box-shadow: 0 0 10px #d946ef; text-transform: uppercase;';
+        audioStatus.innerText = 'AUDIO: OFFLINE [CLICK]';
+        document.body.appendChild(audioStatus);
+
+        const wakeAudio = () => {
+            if (!SoundManager.ctx) {
+                SoundManager.init();
+            } else if (SoundManager.ctx.state === 'suspended') {
+                SoundManager.ctx.resume();
+            }
+
+            if (SoundManager.ctx && SoundManager.ctx.state === 'running') {
+                audioStatus.innerText = 'AUDIO: ONLINE';
+                audioStatus.style.borderColor = '#00f3ff'; // Cyan
+                audioStatus.style.color = '#00f3ff';
+                audioStatus.style.boxShadow = '0 0 15px #00f3ff';
+
+                // Start BGM if game is active
+                if (gameActive) SoundManager.playBGM();
+
+                ['click', 'keydown'].forEach(evt => document.removeEventListener(evt, wakeAudio));
+            }
+        };
+
+        ['click', 'keydown'].forEach(evt => document.addEventListener(evt, wakeAudio));
+
+        // Start Loop
         loop();
 
     </script>

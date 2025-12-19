@@ -124,6 +124,12 @@
 3.  **Neon Visuals**:
     *   Canvas `context`의 `shadowBlur`와 `globalCompositeOperation = 'lighter'`를 활용하여 강렬한 네온 그린 색상의 발광(Glow) 효과 적용.
     *   물리 엔진 렌더링 위에 커스텀 드로잉 루프를 덧입혀 시각적 완성도 향상.
+3.  **Interactive Audio System**:
+    *   **Silent Wake**: 최초 사용자 인터랙션 시 오디오 컨텍스트가 활성화되는 'Silent Wake' 패턴을 적용하여 브라우저 정책 준수.
+    *   **Dynamic SFX**:
+        *   **Throw**: 슬라임이 손을 떠날 때 속도감 있는 "Hwi-ik" (Whoosh) 사운드 재생 (Bandpass Filter Sweep).
+        *   **Impact**: 바닥이나 벽에 강하게 충돌 시 묵직한 "Kung" (Kick Drum) 사운드 재생 (Velocity Threshold 적용).
+        *   **Touch**: 터치 시 경쾌한 "Boop" 피드백 제공.
 
 ---
 
@@ -280,6 +286,12 @@
     *   **Reset & Respawn**: `Reset Current` 버튼으로 현재 설정을 유지한 채 즉시 초기화할 수 있습니다.
 4.  **Optimization**:
     *   `Float32Array`와 `ImageData` 직접 조작을 통해 수십만 픽셀의 페로몬 그리드를 실시간으로 연산합니다.
+3.  **Nature Soundscape**:
+    *   **Ambient**: 숲속의 고요함을 표현하는 "Forest Floor" 앰비언트(Pink Noise + Lowpass Filter).
+    *   **Reactive SFX**:
+        *   **Collect**: 개미가 먹이를 찾았을 때 높은 톤의 "Tick" 소리.
+        *   **Deposit**: 집에 먹이를 가져왔을 때 낮은 톤의 "Tock" 소리.
+        *   이들이 모여 자연스러운 ASMR 같은 리듬감을 형성합니다.
 
 ---
 
@@ -300,6 +312,9 @@
     *   **Destructible Environment**: 가벼운 나무 상자(`d = 0.005`) 더미를 배치하여 사슬로 타격 시 와르르 무너지는 쾌감을 제공합니다.
 3.  **Visuals**:
     *   **Rusty Aesthetic**: 녹슨 쇠 느낌의 브라운 컬러 팔레트와 둥근 모서리(Chamfer) 처리를 적용했습니다.
+4.  **Procedural Audio**:
+    *   **Heavy Texture**: 쇠사슬이 부딪힐 때 금속성의 "Clang" 소리(Inharmonic FM Synthesis) 구현.
+    *   **Physics Sync**: 충돌 강도(Impact Velocity)에 비례하여 볼륨과 피치가 동적으로 변하는 리얼한 사운드 매핑.
 
 ---
 
@@ -381,3 +396,53 @@
     *   **Shape Switching**: 버튼 하나로 사각형과 원형 판을 즉시 전환할 수 있으며, 형상 변경 시 입자들이 자동으로 재배치됩니다.
     *   **Enhanced Visibility**: 어두운 배경에서도 조작이 용이하도록 슬라이더와 컨트롤에 Cyan Glow 효과를 적용하고, UI 위치를 좌측 상단으로 배치하여 시각적 간섭을 최소화했습니다.
 
+---
+
+## 🎯 Technical Note: Real-time Audio Synthesis (오디오 구현 원리)
+
+이 프로젝트들의 가장 큰 특징 중 하나는 **외부 오디오 파일(.mp3, .wav)을 전혀 사용하지 않는다는 점**입니다. 모든 효과음은 브라우저의 **Web Audio API**를 통해 실시간 수학 연산으로 생성됩니다.
+
+### 1. 파일이 아닌 "코드"로 소리를 만드는 이유
+*   **Zero Latency (지연 없음)**: 파일을 로딩하고 디코딩하는 과정이 없으므로, 클릭하거나 충돌하는 즉시(0.001초 이내) 소리가 발생합니다. 게임이나 인터랙티브 웹에서 매우 중요합니다.
+*   **Dynamic Modulation (동적 변형)**:
+    *   **파일 방식**: 녹음된 소리를 단순히 재생만 가능합니다.
+    *   **합성 방식**: 물체의 **충돌 속도, 낙하 높이, 재질**에 따라 소리의 **높낮이(Pitch), 크기(Volume), 거칠기(Frequency)**를 매번 다르게 생성할 수 있습니다. (예: 살짝 부딪히면 "톡", 세게 부딪히면 "쾅!")
+*   **No Network Overhead**: 오디오 에셋 다운로드가 필요 없어 웹페이지 로딩 속도가 비약적으로 빠릅니다.
+
+### 2. 소리가 만들어지는 원리 (Math & Physics)
+*   **Oscillator (발진기)**: "사인파(Sine)", "삼각파(Triangle)" 등의 수학적 파형을 생성하여 공기를 떨게 만듭니다.
+    *   *예: Neon Slime의 "쿵(Kung)" 소리는 150Hz의 사인파를 0.1초 만에 0Hz로 급격히 떨어뜨려 킥 드럼 효과를 낸 것입니다.*
+*   **White Noise Buffer (백색 소음)**: `Math.random()`으로 무작위 난수를 생성하여 "치지지직"하는 잡음을 만듭니다.
+    *   *예: Neon Slime의 "휙(Whoosh)" 소리는 백색 소음을 `Bandpass Filter`(특정 주파수만 통과시키는 체)에 통과시켜 바람 소리처럼 깎아낸 것입니다.*
+*   **Web Audio API**: 이 모든 연산은 자바스크립트 메인 스레드가 아닌 별도의 오디오 스레드에서 처리되어 성능 저하 없이 고품질 사운드를 출력합니다.
+
+우리가 작성한 코드(index.html) 안에는 Web Audio API라는 기술이 사용되었습니다.
+
+1. "휙(Whoosh)" 소리는 어떻게 나나요?
+    data[i] = Math.random() * 2 - 1; 
+이건 **Math.random() (랜덤 숫자)**을 1초에 44,100번 돌려서 **"치지지직" 하는 잡음(White Noise)**을 수학적으로 만드는 코드입니다. 그 잡음을 Bandpass Filter(특정 음역대만 통과시키는 체)에 통과시켜서 "휘오오" 하는 바람 소리처럼 들리게 깎은 것입니다.
+
+2. "쿵(Kung)" 소리는 어떻게 나나요?
+    oscillator.frequency.setValueAtTime(150, 0);
+    oscillator.frequency.exponentialRampToValueAtTime(0, 0.1);
+이건 **Oscillator (발진기)**를 사용하여 150Hz의 사인파를 0.1초 만에 0Hz로 급격히 떨어뜨려 킥 드럼 효과를 낸 것입니다.
+
+3. " бум(Bum)" 소리는 어떻게 나나요?
+    gain.gain.exponentialRampToValueAtTime(0.0001, 0.1);
+이건 **Gain (볼륨)**을 사용하여 0.1초 만에 볼륨을 거의 없게 낮추어 킥 드럼 효과를 낸 것입니다.
+
+---
+
+## 🚀 Version 3.0: Immersive Audio Experience (Update 2025.12)
+
+**"소리는 비주얼의 반이다 (Audio is half the picture)"**라는 철학으로 모든 프로젝트에 고유한 사운드 경험을 추가했습니다.
+
+### 🎧 Audio Design System
+1.  **Zero-Asset**: MP3/WAV 파일 없이 오직 코드로만 소리를 생성합니다.
+2.  **Context-Aware**:
+    *   **Landing**: 우주의 광활함을 표현하기 위해 배경음은 제거하고(Silent Space), 상호작용 시에만 'Warp' 효과음을 제공하여 몰입감을 극대화했습니다.
+    *   **Cyberpunk Globe**: 도시의 웅장함을 위해 Deep Synth Bass와 전기 노이즈(Electric Hum)를 합성했습니다.
+    *   **Ink / Particles**: 수중의 먹먹함이나 유리의 청명함을 필터(BiquadFilter)로 구현했습니다.
+3.  **Interaction Feedback**:
+    *   **First Click**: 브라우저 정책 준수를 위해 첫 인터랙션 시 오디오 엔진을 'Silent Wake' 기법으로 깨웁니다.
+    *   **Dynamic Pitch**: 물체의 속도나 회전수에 따라 피치(Pitch)를 실시간으로 변조하여 살아있는 소리를 만듭니다.
